@@ -1,9 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Serif+Display:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 
 @theme {
-  --font-sans: 'DM Sans', sans-serif;
-  --font-serif: 'DM Serif Display', serif;
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-serif: 'Instrument Serif', serif;
+}
+
+:root {
+  --brand-blue: #0758d6;
+  --brand-ink: #092f50;
+  --brand-amber: #f2a900;
+  --brand-surface: #e8f1ff;
 }
 
 * {
@@ -17,9 +24,11 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-  font-family: 'DM Sans', sans-serif;
-  background: #f7fafe;
-  color: #073b6f;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: #ffffff;
+  color: var(--brand-ink);
+  -webkit-font-smoothing: antialiased;
+  font-optical-sizing: auto;
   text-rendering: optimizeLegibility;
 }
 
@@ -65,8 +74,14 @@ textarea:focus-visible {
 }
 
 .leaflet-container {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Plus Jakarta Sans', sans-serif;
   background: #ddeeff;
+}
+
+/* Leaflet 1.9.4 enables plus-lighter on tiles for a Chrome workaround. With
+   the ArcGIS tiles used here it exposes white seams between adjacent tiles. */
+.leaflet-container img.leaflet-tile {
+  mix-blend-mode: normal;
 }
 
 .leaflet-control-zoom {
@@ -81,8 +96,8 @@ textarea:focus-visible {
   height: 38px !important;
   place-items: center;
   border: 0 !important;
-  color: #073b6f !important;
-  font: 700 20px/1 'DM Sans', sans-serif !important;
+  color: var(--brand-ink) !important;
+  font: 700 20px/1 'Plus Jakarta Sans', sans-serif !important;
 }
 
 .leaflet-control-zoom-in {
@@ -131,7 +146,7 @@ textarea:focus-visible {
   padding: 3px;
   border: 3px solid white;
   border-radius: 18px;
-  background: #0064d2;
+  background: #0758d6;
   box-shadow: 0 5px 16px rgba(0, 74, 155, 0.26);
   transition: transform 180ms ease, border-color 180ms ease;
 }
@@ -152,19 +167,19 @@ textarea:focus-visible {
   height: 12px;
   border-right: 2px solid white;
   border-bottom: 2px solid white;
-  background: #0064d2;
+  background: #0758d6;
   content: '';
   transform: translateX(-50%) rotate(45deg);
 }
 
 .singgah-map-marker:hover span {
   z-index: 20;
-  border-color: #ffb700;
+  border-color: #f2a900;
   transform: translateY(-4px) scale(1.06);
 }
 
 .singgah-map-marker:hover span::after {
-  border-color: #ffb700;
+  border-color: #f2a900;
 }
 
 .leaflet-popup-content-wrapper {
@@ -223,11 +238,27 @@ textarea:focus-visible {
 }
 
 .partner-input:focus {
-  border-color: #0064d2;
-  box-shadow: 0 0 0 3px rgba(0, 100, 210, 0.12);
+  border-color: #0758d6;
+  box-shadow: 0 0 0 3px rgba(7, 88, 214, 0.14);
 }
 
 ::selection {
   background: #b9ddfc;
-  color: #073b6f;
+  color: var(--brand-ink);
 }
+
+/* Keep the existing Tailwind composition, while giving the brand a single,
+   deliberate colour direction across the marketplace and partner dashboard. */
+[class~="bg-[#0064D2]"] { background-color: var(--brand-blue) !important; }
+[class~="bg-[#0064D2]/90"] { background-color: color-mix(in srgb, var(--brand-blue) 90%, transparent) !important; }
+[class~="text-[#0064D2]"] { color: var(--brand-blue) !important; }
+[class~="border-[#0064D2]"] { border-color: var(--brand-blue) !important; }
+[class~="text-[#073B6F]"] { color: var(--brand-ink) !important; }
+[class~="bg-[#073B6F]"] { background-color: var(--brand-ink) !important; }
+[class~="bg-[#FFB700]"] { background-color: var(--brand-amber) !important; }
+[class~="text-[#FFB700]"] { color: var(--brand-amber) !important; }
+[class~="bg-[#EAF4FF]"] { background-color: var(--brand-surface) !important; }
+[class~="bg-[#EDF6FF]"] { background-color: #edf4ff !important; }
+[class~="hover:bg-[#0055B3]"]:hover { background-color: #004bb8 !important; }
+[class~="hover:bg-[#EAA700]"]:hover { background-color: #d99300 !important; }
+[class~="hover:text-[#0064D2]"]:hover { color: var(--brand-blue) !important; }

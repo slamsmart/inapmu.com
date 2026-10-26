@@ -1,9 +1,10 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { divIcon } from "leaflet";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import { Liquid } from "liquid-gooey";
 import "leaflet/dist/leaflet.css";
 import PartnerDashboard, { type PartnerListingInput } from "./PartnerDashboard";
-import { ApiRequestError, loginUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication } from "./lib/api";
+import { ApiRequestError, currentSession, loginUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication } from "./lib/api";
 import { useTurnstile } from "./lib/turnstile";
 
 
@@ -61,11 +62,12 @@ const copy = {
     eyebrow: "Lebih dekat ke tempat yang tepat",
     heroStart: "Temukan ruang untuk",
     heroAccent: "menginap.",
-    heroBody: "Kos, kontrakan, dan vila pilihan—semuanya dalam satu tempat. Cari dengan tenang, hubungi pemilik langsung.",
+    heroBody: "Kos, kontrakan, dan vila pilihan. Semuanya dalam satu tempat. Cari dengan tenang, hubungi pemilik langsung.",
     location: "Lokasi",
     locationPlaceholder: "Mau tinggal di mana?",
     propertyType: "Tipe hunian",
-    search: "Cari",
+    search: "Cari hunian",
+    exploreReady: "siap kamu jelajahi",
     verifiedOwners: "Pemilik terverifikasi",
     noHiddenFees: "Tanpa biaya tersembunyi",
     curated: "Dikurasi untukmu",
@@ -166,7 +168,8 @@ const copy = {
     location: "Location",
     locationPlaceholder: "Where do you want to stay?",
     propertyType: "Property type",
-    search: "Search",
+    search: "Search stays",
+    exploreReady: "ready to explore",
     verifiedOwners: "Verified owners",
     noHiddenFees: "No hidden fees",
     curated: "Curated for you",
@@ -686,6 +689,10 @@ export default function App() {
   const openDashboard = () => {
     setMobileMenuOpen(false);
     setPartnerOpen(false);
+    if (!currentSession()) {
+      openAuth("login");
+      return;
+    }
     setDashboardOpen(true);
     document.body.style.overflow = "hidden";
   };
@@ -710,7 +717,7 @@ export default function App() {
   }, [authOpen, dashboardOpen, partnerOpen, selected]);
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#F7FAFE] text-[#073B6F]">
+    <main className="min-h-screen overflow-hidden bg-white text-[#073B6F]">
       <a href="#jelajah" className="sr-only fixed left-4 top-4 z-[100] rounded-full bg-[#FFB700] px-4 py-3 text-sm font-extrabold text-[#073B6F] focus:not-sr-only">{text.skipToExplore}</a>
       <nav className="relative z-20 mx-auto flex max-w-[1240px] items-center justify-between px-5 py-5 md:px-8">
         <button className="flex items-center gap-2.5" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label={text.homeAria}>
@@ -755,15 +762,14 @@ export default function App() {
         )}
       </nav>
 
-      <header className="relative mx-auto max-w-[1240px] px-5 pb-14 pt-7 md:px-8 md:pb-20 md:pt-14">
-        <div className="pointer-events-none absolute -right-44 -top-52 h-[520px] w-[520px] rounded-full bg-[#DCEFFF] blur-3xl" />
+      <header className="relative mx-auto max-w-[1240px] px-5 pb-10 pt-5 md:px-8 md:pb-14 md:pt-8">
         <div className="relative grid items-center gap-12 lg:grid-cols-[1.05fr_.95fr]" data-reveal>
           <div className="relative z-10">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-[#EAF4FF] px-3.5 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[#0064D2]">
-              <Icon name="sparkles" size={16} /> {text.eyebrow}
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-[#EAF4FF] px-3.5 py-2 text-xs font-bold uppercase tracking-[0.12em]">
+              <span className="text-[#0064D2]"><Icon name="sparkles" size={16} /></span> <span className="text-[#111827]">{text.eyebrow}</span>
             </div>
             <h1 className="max-w-[680px] text-[clamp(2.5rem,11vw,4.5rem)] font-extrabold leading-[1.03] tracking-[-0.055em] sm:text-6xl lg:text-[72px]">
-              {text.heroStart} <span className="font-serif font-normal italic text-[#0064D2]">{text.heroAccent}</span>
+              <span className="text-[#111827]">{text.heroStart}</span> <span className="font-serif font-normal italic text-[#0064D2]">{text.heroAccent}</span>
             </h1>
             <p className="mt-5 max-w-[560px] text-base leading-7 text-stone-600 md:text-lg">
               {text.heroBody}
@@ -773,15 +779,16 @@ export default function App() {
                 <label className="flex min-w-0 flex-1 items-center gap-3 rounded-[16px] px-4 py-3 sm:py-2">
                   <span className="text-[#0064D2]"><Icon name="location" size={21} /></span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-stone-400">{text.location}</span>
-                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={text.locationPlaceholder} className="w-full bg-transparent text-[15px] font-semibold text-[#073B6F] outline-none placeholder:text-stone-400" />
+                    <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-stone-500">{text.location}</span>
+                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={text.locationPlaceholder} className="w-full bg-transparent text-[15px] font-semibold text-[#073B6F] outline-none placeholder:text-stone-500" />
                   </span>
+                  {query && <button type="button" onClick={() => setQuery("")} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-stone-500 transition hover:bg-[#EAF4FF] hover:text-[#0064D2]" aria-label={text.clearSearch}><Icon name="x" size={15}/></button>}
                 </label>
                 <div className="hidden w-px bg-stone-200 sm:block" />
                 <label className="flex items-center gap-3 rounded-[16px] px-4 py-3 sm:w-[190px] sm:py-2">
                   <span className="text-[#0064D2]"><Icon name="home" size={20} /></span>
                   <span className="flex-1">
-                    <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-stone-400">{text.propertyType}</span>
+                    <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-stone-500">{text.propertyType}</span>
                     <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full appearance-none bg-transparent text-[15px] font-semibold outline-none">
                       <option value="Semua">{categoryLabel("Semua", language)}</option><option value="Kos">{categoryLabel("Kos", language)}</option><option value="Kontrakan">{categoryLabel("Kontrakan", language)}</option><option value="Vila">{categoryLabel("Vila", language)}</option>
                     </select>
@@ -793,28 +800,49 @@ export default function App() {
                 </a>
               </div>
             </div>
-            <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-semibold text-stone-500">
-              <span className="flex items-center gap-2"><span className="text-[#0877E8]"><Icon name="shield" size={17}/></span> {text.verifiedOwners}</span>
-              <span className="flex items-center gap-2"><span className="text-[#0877E8]"><Icon name="check" size={17}/></span> {text.noHiddenFees}</span>
-            </div>
+            <Liquid
+              blur={8}
+              contrast={20}
+              fill="#FFFFFF"
+              shadow="0 8px 24px rgba(0, 74, 155, .08)"
+              className="mt-6 flex flex-wrap items-center gap-2 text-xs font-semibold text-stone-500 sm:gap-3"
+            >
+              <Liquid.Item observe className="flex items-center gap-2 rounded-full px-3 py-2">
+                <span className="text-[#0877E8]"><Icon name="shield" size={17}/></span> {text.verifiedOwners}
+              </Liquid.Item>
+              <Liquid.Item observe className="flex items-center gap-2 rounded-full px-3 py-2">
+                <span className="text-[#0877E8]"><Icon name="check" size={17}/></span> {text.noHiddenFees}
+              </Liquid.Item>
+            </Liquid>
           </div>
-          <div className="relative hidden min-h-[545px] lg:block">
-            <div className="absolute right-0 top-0 h-[470px] w-[88%] rotate-2 overflow-hidden rounded-[120px_32px_120px_32px]">
+          <div className="relative">
+            <div className="hidden min-h-[480px] lg:block">
+            <div className="absolute right-0 top-0 h-[430px] w-[88%] rotate-2 overflow-hidden rounded-[120px_32px_120px_32px]">
               <img src="https://images.unsplash.com/photo-1692736933760-8a8a9b8c1b6f?auto=format&fit=crop&w=1200&q=88" alt="Vila tropis dengan kolam renang" className="h-full w-full object-cover" />
             </div>
             <div className="absolute bottom-0 left-2 w-[250px] rounded-[24px] bg-white p-3 shadow-[0_22px_60px_rgba(0,74,155,.2)]">
               <img src="https://images.unsplash.com/photo-1613553474179-e1eda3ea5734?auto=format&fit=crop&w=600&q=85" alt="Kamar nyaman dan terang" className="h-32 w-full rounded-[16px] object-cover" />
               <div className="flex items-center justify-between px-1 pb-1 pt-3">
-                <div><p className="text-xs font-bold text-[#0064D2]">PILIHAN PEKAN INI</p><p className="mt-1 font-bold">Nyaman di Setiabudi</p></div>
+              <div><p className="text-xs font-bold text-[#0064D2]">{text.curated}</p><p className="mt-1 font-bold">Nyaman di Setiabudi</p></div>
                 <span className="grid h-9 w-9 place-items-center rounded-full bg-[#EDF6FF]"><Icon name="arrow" size={17}/></span>
               </div>
             </div>
             <div className="absolute right-5 top-8 flex items-center gap-3 rounded-full bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
               <span className="grid h-9 w-9 place-items-center rounded-full bg-[#FFF4D6] text-[#0064D2]"><Icon name="heart" size={18}/></span>
-              <span><strong className="block text-sm">1.200+ pilihan</strong><small className="text-stone-500">siap kamu jelajahi</small></span>
+               <span><strong className="block text-sm">{text.curated}</strong><small className="text-stone-500">{text.exploreReady}</small></span>
+             </div>
+            </div>
+            </div>
+            <div className="mt-6 flex items-center gap-3 rounded-[20px] border border-[#DFEAF5] bg-white p-3 shadow-[0_14px_35px_rgba(0,74,155,.1)] lg:hidden">
+              <img src={listings[1].image} alt={listings[1].title} className="h-16 w-20 shrink-0 rounded-[14px] object-cover" />
+              <div className="min-w-0">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#0064D2]">{text.curated}</p>
+                <p className="mt-1 truncate font-bold text-[#073B6F]">{listings[1].title}</p>
+                <p className="mt-1 text-xs text-stone-500">{listings[1].location}</p>
+              </div>
+              <span className="ml-auto grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#EDF6FF] text-[#0064D2]"><Icon name="arrow" size={17}/></span>
             </div>
           </div>
-        </div>
       </header>
 
       <section id="jelajah" className="bg-white py-16 md:py-24">
@@ -853,7 +881,7 @@ export default function App() {
         </div>
       </section>
 
-      <section className="bg-[#EEF5FC] py-16 md:py-24">
+      <section className="bg-white py-16 md:py-24">
         <div className="mx-auto max-w-[1240px] px-5 md:px-8">
           <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end" data-reveal>
             <div>
@@ -954,7 +982,7 @@ export default function App() {
         </div>
       </section>
 
-      <footer className="bg-[#F7FAFE] px-5 py-9 md:px-8">
+      <footer className="bg-white px-5 py-9 md:px-8">
         <div className="mx-auto flex max-w-[1240px] flex-col items-center justify-between gap-4 border-t border-stone-200 pt-8 text-sm text-stone-500 sm:flex-row">
           <span className="font-extrabold text-[#073B6F]">inapmu<span className="text-[#FFB700]">.com</span></span>
           <p>{text.footer}</p>
@@ -964,7 +992,7 @@ export default function App() {
 
       {selected && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#002B55]/60 p-0 backdrop-blur-sm sm:items-center sm:p-5" role="dialog" aria-modal="true">
-          <div className="max-h-[94vh] w-full max-w-[940px] overflow-y-auto rounded-t-[28px] bg-[#F7FAFE] shadow-2xl sm:rounded-[28px]">
+          <div className="max-h-[94vh] w-full max-w-[940px] overflow-y-auto rounded-t-[28px] bg-white shadow-2xl sm:rounded-[28px]">
             <div className="relative grid md:grid-cols-[1.08fr_.92fr]">
               <div className="relative min-h-[260px] md:min-h-[610px]">
                 <img src={selected.image} alt={selected.title} className="absolute inset-0 h-full w-full object-cover sm:rounded-l-[28px]" />
@@ -1281,12 +1309,12 @@ export default function App() {
                       {text.password}
                       {authMode === "login" && <button type="button" className="text-xs font-bold text-[#0064D2] hover:underline">{text.forgotPassword}</button>}
                     </span>
-                    <input required minLength={8} type="password" name="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
+                      <input required minLength={12} type="password" name="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                   </label>
                   {authMode === "register" && (
                     <label className="block text-sm font-bold text-stone-600">
                       {text.confirmPassword}
-                      <input required minLength={8} type="password" name="confirmPassword" autoComplete="new-password" onInput={(event) => event.currentTarget.setCustomValidity("")} className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
+                       <input required minLength={12} type="password" name="confirmPassword" autoComplete="new-password" onInput={(event) => event.currentTarget.setCustomValidity("")} className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                     </label>
                   )}
                   {authError && <p className="text-sm font-bold text-red-600">{authError}</p>}
