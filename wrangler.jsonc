@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "inapmu-api",
+  "main": "worker/index.ts",
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "256edca59021db439c2ae22f9e3e9086",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "inapmu-db",
+      "database_id": "2d869b1b-55a1-4697-894e-212296815ed0",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "inapmu-media"
+    }
+  ],
+  "vars": {
+    // Set secret via: npx wrangler secret put TURNSTILE_SECRET_KEY
+    "ENVIRONMENT": "production"
+  },
+  "workers_dev": true,
+  "placement": { "mode": "smart" },
+  "routes": [
+    { "pattern": "inapmu.com/api*", "zone_name": "inapmu.com" },
+    { "pattern": "inapmu.com/media*", "zone_name": "inapmu.com" },
+    { "pattern": "www.inapmu.com/api*", "zone_name": "inapmu.com" },
+    { "pattern": "www.inapmu.com/media*", "zone_name": "inapmu.com" }
+  ]
+}

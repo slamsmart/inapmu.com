@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "inapmu-web",
+  "main": "worker/web.ts",
+  "compatibility_date": "2024-12-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "workers_dev": true,
+  "services": [
+    { "binding": "API", "service": "inapmu-api" }
+  ],
+  "routes": [
+    { "pattern": "inapmu.com", "custom_domain": true },
+    { "pattern": "www.inapmu.com/*", "zone_name": "inapmu.com" }
+  ]
+}
