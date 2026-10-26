@@ -184,7 +184,7 @@ export default function PartnerDashboard({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-[#F3F7FB] text-[#073B6F]">
+    <div className="fixed inset-0 z-[80] overflow-y-auto overscroll-contain bg-[#F3F7FB] text-[#073B6F]">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[260px] flex-col border-r border-[#DFEAF5] bg-white p-5 lg:flex">
         <button onClick={onClose} className="flex items-center gap-2 px-2 py-3 text-xl font-extrabold tracking-[-0.04em]">
           inapmu<span className="-ml-2 text-[#FFB700]">.com</span>
@@ -214,12 +214,12 @@ export default function PartnerDashboard({
             <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-[#F3F7FB] text-[#073B6F] lg:hidden" aria-label={text.back}><DashIcon name="x" size={18}/></button>
             <span className="hidden h-10 w-10 place-items-center rounded-full bg-[#0064D2] text-sm font-extrabold text-white lg:grid">MI</span>
           </div>
-          <div className="mx-auto mt-4 flex max-w-[1120px] gap-2 overflow-x-auto pb-1 lg:hidden">
+          <div className="mx-auto mt-4 flex max-w-[1120px] gap-2 overflow-x-auto px-0.5 pb-1 lg:hidden">
             {navigation.map((item) => <button key={item.id} onClick={() => setTab(item.id)} className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold ${tab === item.id ? "bg-[#0064D2] text-white" : "bg-[#F3F7FB] text-stone-500"}`}><DashIcon name={item.icon} size={15}/>{item.label}</button>)}
           </div>
         </header>
 
-        <main className="mx-auto max-w-[1120px] px-5 py-8 md:px-8 md:py-10">
+        <main className="mx-auto max-w-[1120px] px-4 py-7 sm:px-5 md:px-8 md:py-10">
           {tab === "overview" && (
             <div>
               <div className="mb-8">

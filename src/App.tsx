@@ -50,6 +50,10 @@ type Listing = {
 const copy = {
   id: {
     explore: "Jelajahi",
+    skipToExplore: "Langsung ke pilihan properti",
+    openMenu: "Buka menu",
+    closeMenu: "Tutup menu",
+    homeAria: "Kembali ke beranda inapmu.com",
     howItWorks: "Cara kerja",
     becomeOwner: "Jadi Mitra",
     login: "Masuk",
@@ -147,6 +151,10 @@ const copy = {
   },
   en: {
     explore: "Explore",
+    skipToExplore: "Skip to property picks",
+    openMenu: "Open menu",
+    closeMenu: "Close menu",
+    homeAria: "Back to inapmu.com home",
     howItWorks: "How it works",
     becomeOwner: "Become a Partner",
     login: "Log in",
@@ -573,6 +581,7 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [submittingAuth, setSubmittingAuth] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [partnerListings, setPartnerListings] = useState<PartnerListingInput[]>([]);
   const [partnerContact, setPartnerContact] = useState({
     name: "Mitra inapmu.com",
@@ -649,6 +658,7 @@ export default function App() {
   };
 
   const openPartner = () => {
+    setMobileMenuOpen(false);
     setPartnerOpen(true);
     setPartnerSubmitted(false);
     document.body.style.overflow = "hidden";
@@ -660,6 +670,7 @@ export default function App() {
   };
 
   const openAuth = (mode: "login" | "register") => {
+    setMobileMenuOpen(false);
     setAuthMode(mode);
     setAuthResult(null);
     setAuthOpen(true);
@@ -673,6 +684,7 @@ export default function App() {
   };
 
   const openDashboard = () => {
+    setMobileMenuOpen(false);
     setPartnerOpen(false);
     setDashboardOpen(true);
     document.body.style.overflow = "hidden";
@@ -683,10 +695,25 @@ export default function App() {
     document.body.style.overflow = "";
   };
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (dashboardOpen) closeDashboard();
+      else if (authOpen) closeAuth();
+      else if (partnerOpen) closePartner();
+      else if (selected) closeModal();
+      else setMobileMenuOpen(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [authOpen, dashboardOpen, partnerOpen, selected]);
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#F7FAFE] text-[#073B6F]">
+      <a href="#jelajah" className="sr-only fixed left-4 top-4 z-[100] rounded-full bg-[#FFB700] px-4 py-3 text-sm font-extrabold text-[#073B6F] focus:not-sr-only">{text.skipToExplore}</a>
       <nav className="relative z-20 mx-auto flex max-w-[1240px] items-center justify-between px-5 py-5 md:px-8">
-        <button className="flex items-center gap-2.5" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+        <button className="flex items-center gap-2.5" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label={text.homeAria}>
           <span className="grid h-10 w-10 place-items-center rounded-[13px] bg-[#0064D2] text-white"><Icon name="home" size={21} /></span>
           <span className="text-xl font-extrabold tracking-[-0.04em]">inapmu<span className="text-[#FFB700]">.com</span></span>
         </button>
@@ -703,8 +730,29 @@ export default function App() {
           </div>
           <button onClick={() => openAuth("login")} className="hidden rounded-full border border-[#D9D8D0] px-5 py-2.5 text-sm font-bold transition hover:bg-white lg:block">{text.login}</button>
           <button onClick={() => openAuth("register")} className="hidden rounded-full bg-[#0064D2] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#0055B3] lg:block">{text.register}</button>
-          <button onClick={() => openAuth("login")} className="grid h-10 w-10 place-items-center rounded-full border border-[#D9D8D0] lg:hidden" aria-label={text.login}><Icon name="user" /></button>
+          <button
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            className="grid h-10 w-10 place-items-center rounded-full border border-[#D9D8D0] transition hover:border-[#0064D2] hover:text-[#0064D2] md:hidden"
+            aria-label={mobileMenuOpen ? text.closeMenu : text.openMenu}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-navigation"
+          >
+            <Icon name={mobileMenuOpen ? "x" : "menu"} />
+          </button>
         </div>
+        {mobileMenuOpen && (
+          <div id="mobile-navigation" className="absolute left-5 right-5 top-[calc(100%-0.5rem)] rounded-[22px] border border-[#DFEAF5] bg-white p-3 shadow-[0_22px_60px_rgba(0,74,155,.18)] md:hidden">
+            <div className="grid gap-1 text-sm font-bold">
+              <a href="#jelajah" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.explore}</a>
+              <a href="#cara-kerja" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.howItWorks}</a>
+              <button onClick={partnerRegistered ? openDashboard : openPartner} className="rounded-[14px] px-4 py-3 text-left text-[#073B6F] transition hover:bg-[#F3F7FB]">{partnerRegistered ? text.dashboardNav : text.becomeOwner}</button>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 border-t border-[#EEF2F6] pt-3">
+              <button onClick={() => openAuth("login")} className="rounded-[13px] border border-[#D9D8D0] px-3 py-3 text-sm font-bold text-[#073B6F]">{text.login}</button>
+              <button onClick={() => openAuth("register")} className="rounded-[13px] bg-[#0064D2] px-3 py-3 text-sm font-bold text-white">{text.register}</button>
+            </div>
+          </div>
+        )}
       </nav>
 
       <header className="relative mx-auto max-w-[1240px] px-5 pb-14 pt-7 md:px-8 md:pb-20 md:pt-14">
@@ -714,7 +762,7 @@ export default function App() {
             <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-[#EAF4FF] px-3.5 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[#0064D2]">
               <Icon name="sparkles" size={16} /> {text.eyebrow}
             </div>
-            <h1 className="max-w-[680px] text-[43px] font-extrabold leading-[1.03] tracking-[-0.055em] sm:text-6xl lg:text-[72px]">
+            <h1 className="max-w-[680px] text-[clamp(2.5rem,11vw,4.5rem)] font-extrabold leading-[1.03] tracking-[-0.055em] sm:text-6xl lg:text-[72px]">
               {text.heroStart} <span className="font-serif font-normal italic text-[#0064D2]">{text.heroAccent}</span>
             </h1>
             <p className="mt-5 max-w-[560px] text-base leading-7 text-stone-600 md:text-lg">
@@ -740,7 +788,7 @@ export default function App() {
                   </span>
                   <Icon name="chevron" size={16} />
                 </label>
-                <a href="#jelajah" className="flex items-center justify-center gap-2 rounded-[16px] bg-[#FFB700] px-6 py-4 font-bold text-[#073B6F] transition hover:bg-[#EAA700]">
+                <a href="#jelajah" className="flex min-h-[52px] items-center justify-center gap-2 rounded-[16px] bg-[#FFB700] px-6 py-4 font-bold text-[#073B6F] transition hover:-translate-y-0.5 hover:bg-[#EAA700]">
                   <Icon name="search" size={19} /> {text.search}
                 </a>
               </div>
@@ -777,7 +825,7 @@ export default function App() {
               <h2 className="text-3xl font-extrabold tracking-[-0.04em] md:text-[42px]">{text.favoritePlaces}</h2>
               <p className="mt-2 text-stone-500">{filtered.length} {text.propertiesMatch}</p>
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
               {["Semua", "Kos", "Kontrakan", "Vila"].map((item) => (
                 <button key={item} onClick={() => setCategory(item)} className={`whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-bold transition ${category === item ? "bg-[#0064D2] text-white" : "bg-[#EFF4F9] text-stone-600 hover:bg-[#E2ECF5]"}`}>
                   {categoryLabel(item, language)}
@@ -818,7 +866,7 @@ export default function App() {
               {filtered.length} {text.propertiesShown}
             </div>
           </div>
-          <div className="relative h-[500px] overflow-hidden rounded-[28px] border-[6px] border-white bg-[#DDEEFF] shadow-[0_20px_55px_rgba(0,100,210,.12)] md:h-[620px]" data-reveal>
+          <div className="relative h-[420px] overflow-hidden rounded-[24px] border-4 border-white bg-[#DDEEFF] shadow-[0_20px_55px_rgba(0,100,210,.12)] sm:h-[500px] md:h-[620px] md:rounded-[28px] md:border-[6px]" data-reveal>
             <MapContainer
               center={[-7.45, 110.9]}
               zoom={6}

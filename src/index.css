@@ -16,14 +16,28 @@ html {
 
 body {
   margin: 0;
+  min-width: 320px;
   font-family: 'DM Sans', sans-serif;
   background: #f7fafe;
+  color: #073b6f;
+  text-rendering: optimizeLegibility;
 }
 
 button,
 a,
 select {
   cursor: pointer;
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
 }
 
 button:focus-visible,
@@ -82,6 +96,24 @@ textarea:focus-visible {
 .leaflet-control-attribution {
   font-size: 9px !important;
   opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .leaflet-control-zoom {
+    margin: 10px !important;
+  }
+
+  .leaflet-control-zoom a {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  .leaflet-control-attribution {
+    max-width: 62%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .singgah-map-marker {
@@ -193,4 +225,9 @@ textarea:focus-visible {
 .partner-input:focus {
   border-color: #0064d2;
   box-shadow: 0 0 0 3px rgba(0, 100, 210, 0.12);
+}
+
+::selection {
+  background: #b9ddfc;
+  color: #073b6f;
 }
