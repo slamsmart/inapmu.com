@@ -268,7 +268,7 @@ export default function PartnerDashboard({
                     <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => onKtpChange(event.target.files?.[0])}/>
                   </label>
                   <div className="mt-5 flex items-start gap-3 rounded-[14px] bg-[#EAF4FF] p-4 text-sm leading-6 text-[#285E91]"><DashIcon name="shield" size={19}/><p>{text.dataSecure}</p></div>
-                  <div ref={turnstileRef} className="mt-4" />
+                  <div ref={turnstileRef} className="mt-4 flex justify-center" />
                   <button disabled={!ktpFile || submittingVerification} onClick={async () => {
                     if (!ktpFile) return;
                     setSubmittingVerification(true);

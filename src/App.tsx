@@ -18,14 +18,20 @@ type IconName =
   | "home"
   | "location"
   | "menu"
+  | "moon"
   | "search"
   | "shield"
   | "sparkles"
   | "star"
+  | "sun"
   | "user"
   | "x";
 
 type Language = "id" | "en";
+
+type Theme = "light" | "dark";
+
+const THEME_STORAGE_KEY = "inapmu-theme";
 
 type Listing = {
   id: number;
@@ -46,7 +52,10 @@ type Listing = {
   survey: boolean;
   coordinates: [number, number];
   mapsUrl?: string;
+  plan?: Plan;
 };
+
+type Plan = "free" | "gold" | "platinum";
 
 const copy = {
   id: {
@@ -150,6 +159,32 @@ const copy = {
     guestEmail: "Email",
     preferredDate: "Tanggal pilihan",
     preferredTime: "Waktu pilihan",
+    themeToDark: "Aktifkan mode gelap",
+    themeToLight: "Aktifkan mode terang",
+    pricingNav: "Harga",
+    aboutNav: "Tentang",
+    trusted: "Trusted",
+    platinumPick: "Pilihan Platinum",
+    pricingKicker: "Paket mitra bulanan",
+    pricingTitle: "Pilih paket untuk propertimu",
+    pricingBody: "Mulai gratis. Naikkan ke Gold atau Platinum saat kamu ingin properti lebih dipercaya dan lebih sering dilihat.",
+    perMonth: "/bulan",
+    popular: "Paling populer",
+    promoLabel: "Harga promo",
+    paymentNote: "Pembayaran paket berbayar melalui QRIS (Mayar.id). Segera hadir.",
+    plans: {
+      free: { name: "Free", body: "Untuk mulai memasang properti.", cta: "Mulai gratis", features: ["Pasang listing properti", "Chat dan jadwal survei dari calon penyewa", "Tampil di pencarian dan peta"] },
+      gold: { name: "Gold", body: "Supaya properti lebih dipercaya calon penyewa.", cta: "Pilih Gold", features: ["Semua fitur Free", "Badge Trusted warna emas di listing"] },
+      platinum: { name: "Platinum", body: "Untuk properti yang ingin tampil paling depan.", cta: "Pilih Platinum", features: ["Semua fitur Gold", "Badge Trusted warna platinum", "Foto utama properti tampil di slider hero beranda"] },
+    },
+    aboutKicker: "Tentang inapmu.com",
+    aboutTitle: "Mencari tempat tinggal seharusnya terasa tenang.",
+    aboutBody: "inapmu.com mempertemukan pencari kos, kontrakan, dan vila dengan pemilik properti secara langsung. Tanpa perantara, tanpa biaya tersembunyi, dan dengan pemilik yang identitasnya kami verifikasi.",
+    aboutPoints: [
+      ["Langsung ke pemilik", "Chat dan jadwalkan survei tanpa perantara."],
+      ["Pemilik terverifikasi", "Identitas mitra kami periksa sebelum listing tayang."],
+      ["Seluruh Indonesia", "Dari Jakarta sampai Bali, cari dari satu peta."],
+    ],
   },
   en: {
     explore: "Explore",
@@ -252,6 +287,32 @@ const copy = {
     guestEmail: "Email",
     preferredDate: "Preferred date",
     preferredTime: "Preferred time",
+    themeToDark: "Switch to dark mode",
+    themeToLight: "Switch to light mode",
+    pricingNav: "Pricing",
+    aboutNav: "About",
+    trusted: "Trusted",
+    platinumPick: "Platinum pick",
+    pricingKicker: "Monthly partner plans",
+    pricingTitle: "Pick a plan for your property",
+    pricingBody: "Start free. Upgrade to Gold or Platinum when you want your property to look more trustworthy and get seen more often.",
+    perMonth: "/month",
+    popular: "Most popular",
+    promoLabel: "Promo price",
+    paymentNote: "Paid plans are paid via QRIS (Mayar.id). Coming soon.",
+    plans: {
+      free: { name: "Free", body: "To start listing your property.", cta: "Start free", features: ["List your property", "Chats and survey requests from renters", "Shown in search and on the map"] },
+      gold: { name: "Gold", body: "So renters trust your property more.", cta: "Choose Gold", features: ["Everything in Free", "Gold Trusted badge on your listing"] },
+      platinum: { name: "Platinum", body: "For properties that want the front row.", cta: "Choose Platinum", features: ["Everything in Gold", "Platinum Trusted badge", "Main property photo in the homepage hero slider"] },
+    },
+    aboutKicker: "About inapmu.com",
+    aboutTitle: "Finding a place to stay should feel calm.",
+    aboutBody: "inapmu.com connects people looking for rooms, houses, and villas directly with property owners. No middlemen, no hidden fees, and owners whose identity we verify.",
+    aboutPoints: [
+      ["Straight to the owner", "Chat and schedule a survey without middlemen."],
+      ["Verified owners", "We check partner identity before a listing goes live."],
+      ["All of Indonesia", "From Jakarta to Bali, search from one map."],
+    ],
   },
 };
 
@@ -276,10 +337,12 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     home: <><path d="m3 11 9-8 9 8"/><path d="M5 10v11h14V10M9 21v-7h6v7"/></>,
     location: <><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16"/></>,
+    moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>,
     search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></>,
     shield: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-5"/></>,
     sparkles: <><path d="m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2z"/><path d="m5 14-.8 2.2L2 17l2.2.8L5 20l.8-2.2L8 17l-2.2-.8zM19 15l-.6 1.4L17 17l1.4.6L19 19l.6-1.4L21 17l-1.4-.6z"/></>,
     star: <path d="m12 2 3 6 6.5.9-4.7 4.6 1.1 6.5-5.9-3.1L6.1 20l1.1-6.5-4.7-4.6L9 8z"/>,
+    sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></>,
     user: <><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>,
     x: <><path d="m6 6 12 12M18 6 6 18"/></>,
   };
@@ -306,13 +369,14 @@ function StarRating({ rating, compact = false }: { rating: number; compact?: boo
               <defs>
                 <linearGradient id={gradientId} x1="0" x2="1" y1="0" y2="0">
                   <stop offset={`${fill}%`} stopColor="#FFB700"/>
-                  <stop offset={`${fill}%`} stopColor="#E2E8F0"/>
+                  <stop offset={`${fill}%`} stopColor="#E2E8F0" className="star-stop-track"/>
                 </linearGradient>
               </defs>
               <path
                 d="m12 2.4 2.93 5.94 6.56.95-4.75 4.63 1.12 6.53L12 17.37l-5.86 3.08 1.12-6.53-4.75-4.63 6.56-.95L12 2.4z"
                 fill={`url(#${gradientId})`}
                 stroke={fill > 0 ? "#E7A600" : "#CBD5E1"}
+                className={fill > 0 ? undefined : "star-path-empty"}
                 strokeWidth="1"
                 strokeLinejoin="round"
               />
@@ -321,6 +385,27 @@ function StarRating({ rating, compact = false }: { rating: number; compact?: boo
         })}
       </span>
       <strong className={compact ? "text-xs tabular-nums text-stone-700" : "text-sm tabular-nums text-stone-700"}>{rating.toFixed(2)}</strong>
+    </span>
+  );
+}
+
+const PLAN_PRICES: Record<Plan, { price: number; original?: number }> = {
+  free: { price: 0 },
+  gold: { price: 19000, original: 29000 },
+  platinum: { price: 34000, original: 49000 },
+};
+
+const TRUSTED_BADGE_STYLES: Record<Exclude<Plan, "free">, string> = {
+  gold: "trusted-gold bg-gradient-to-r from-[#F7D774] via-[#E8B53A] to-[#C98F12] text-[#4A3300] ring-[#B8860B]/30",
+  platinum: "trusted-platinum bg-gradient-to-r from-[#F4F6F8] via-[#D5DBE1] to-[#A9B2BC] text-[#2C343D] ring-[#7D8792]/30",
+};
+
+function TrustedBadge({ plan, label, size = "sm" }: { plan?: Plan; label: string; size?: "sm" | "md" }) {
+  if (!plan || plan === "free") return null;
+  const sizing = size === "md" ? "gap-1.5 px-3 py-1.5 text-xs" : "gap-1 px-2.5 py-1 text-[11px]";
+  return (
+    <span className={`inline-flex shrink-0 items-center rounded-full font-semibold shadow-sm ring-1 ${sizing} ${TRUSTED_BADGE_STYLES[plan]}`} title={`${label} ${plan === "gold" ? "Gold" : "Platinum"}`}>
+      <Icon name="shield" size={size === "md" ? 14 : 12} /> {label}
     </span>
   );
 }
@@ -342,6 +427,7 @@ const listings: Listing[] = [
     owner: "Ayu Prameswari",
     ownerPhone: "628123450001",
     ownerEmail: "ayu@inapmu.com",
+    plan: "platinum",
     survey: true,
     coordinates: [-8.5069, 115.2625] as [number, number],
   },
@@ -361,6 +447,7 @@ const listings: Listing[] = [
     owner: "Nara Living",
     ownerPhone: "628123450002",
     ownerEmail: "nara@inapmu.com",
+    plan: "gold",
     survey: true,
     coordinates: [-6.2151, 106.8307] as [number, number],
   },
@@ -380,6 +467,7 @@ const listings: Listing[] = [
     owner: "Bima Properti",
     ownerPhone: "628123450003",
     ownerEmail: "bima@inapmu.com",
+    plan: "gold",
     survey: true,
     coordinates: [-6.8735, 107.6049] as [number, number],
   },
@@ -399,6 +487,7 @@ const listings: Listing[] = [
     owner: "Kedaton Stays",
     ownerPhone: "628123450004",
     ownerEmail: "kedaton@inapmu.com",
+    plan: "platinum",
     survey: false,
     coordinates: [-8.6478, 115.1385] as [number, number],
   },
@@ -543,9 +632,12 @@ function ListingCard({ item, onOpen, language }: { item?: Listing; onOpen: () =>
       <div className="relative aspect-[1.17] overflow-hidden rounded-[22px] bg-stone-100">
         <img src={item.image} alt={item.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" />
         <div className="absolute left-3 top-3 flex items-center gap-2">
-          {item.promoted && <span className="rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-stone-700 shadow-sm">{text.promoted}</span>}
-          <span className="rounded-full bg-[#0064D2]/90 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">{item.tag}</span>
+          {item.promoted && <span className="rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-stone-700 shadow-sm">{text.promoted}</span>}
+          <span className="rounded-full bg-[#0064D2]/90 px-3 py-1.5 text-xs font-medium text-white backdrop-blur">{item.tag}</span>
         </div>
+        {item.plan && item.plan !== "free" && (
+          <div className="absolute bottom-3 left-3"><TrustedBadge plan={item.plan} label={text.trusted} size="md" /></div>
+        )}
         <button onClick={() => setSaved(!saved)} className={`absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 transition hover:scale-105 ${saved ? "text-[#FFB700]" : "text-stone-700"}`} aria-label="Simpan properti">
           <svg width="19" height="19" viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8z"/></svg>
         </button>
@@ -553,13 +645,13 @@ function ListingCard({ item, onOpen, language }: { item?: Listing; onOpen: () =>
       <button onClick={onOpen} className="w-full pt-4 text-left">
         <div className="mb-1 flex items-start justify-between gap-3">
           <div>
-            <p className="mb-1 text-xs font-bold uppercase tracking-[0.13em] text-[#0064D2]">{categoryLabel(item.type, language)}</p>
-            <h3 className="text-[17px] font-bold leading-tight text-[#073B6F] transition group-hover:text-[#0064D2]">{item.title}</h3>
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">{categoryLabel(item.type, language)}</p>
+            <h3 className="text-[17px] font-medium leading-snug tracking-[-0.02em] text-[#111827] transition group-hover:text-[#0064D2]">{item.title}</h3>
           </div>
           <StarRating rating={item.rating} compact />
         </div>
         <p className="mb-2 text-sm text-stone-500">{item.location} · {item.reviews} {text.reviews}</p>
-        <p className="text-[15px] text-stone-600"><strong className="text-[#073B6F]">Rp{formatPrice(item.price)}</strong> / {periodLabel(item.period, language)}</p>
+        <p className="text-[15px] text-stone-600"><strong className="font-semibold text-[#111827]">Rp{formatPrice(item.price)}</strong> / {periodLabel(item.period, language)}</p>
       </button>
     </article>
   );
@@ -586,6 +678,24 @@ export default function App() {
   const [authenticatedUser, setAuthenticatedUser] = useState<SessionUser | null>(null);
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (stored === "dark" || stored === "light") return stored;
+    } catch {
+      // localStorage can be unavailable (e.g. blocked storage); fall through to the system preference.
+    }
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Ignore blocked storage; the theme still applies for this visit.
+    }
+  }, [theme]);
   const [partnerListings, setPartnerListings] = useState<PartnerListingInput[]>([]);
   const [partnerContact, setPartnerContact] = useState({
     name: "Mitra inapmu.com",
@@ -627,6 +737,19 @@ export default function App() {
     const normalized = query.toLowerCase();
     return matchesCategory && (item.location.toLowerCase().includes(normalized) || item.title.toLowerCase().includes(normalized));
   }), [category, marketplaceListings, query]);
+
+  // Platinum listings rotate through the hero slider.
+  const platinumListings = useMemo(() => marketplaceListings.filter((item) => item.plan === "platinum"), [marketplaceListings]);
+  const [heroSlide, setHeroSlide] = useState(0);
+  const heroCount = platinumListings.length;
+  const activeHeroListing = heroCount > 0 ? platinumListings[heroSlide % heroCount] : undefined;
+
+  useEffect(() => {
+    if (heroCount < 2) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => setHeroSlide((current) => (current + 1) % heroCount), 5000);
+    return () => window.clearInterval(timer);
+  }, [heroCount, heroSlide]);
 
   useEffect(() => {
     const revealElements = Array.from(
@@ -761,24 +884,35 @@ export default function App() {
       <nav className="relative z-20 mx-auto flex max-w-[1240px] items-center justify-between px-5 py-5 md:px-8">
         <button className="flex items-center gap-2.5" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label={text.homeAria}>
           <span className="grid h-10 w-10 place-items-center rounded-[13px] bg-[#0064D2] text-white"><Icon name="home" size={21} /></span>
-          <span className="text-xl font-extrabold tracking-[-0.04em]">inapmu<span className="text-[#FFB700]">.com</span></span>
+          <span className="text-xl font-semibold tracking-[-0.03em]">inapmu<span className="text-[#FFB700]">.com</span></span>
         </button>
-        <div className="hidden items-center gap-8 text-sm font-semibold md:flex">
+        <div className="hidden items-center gap-7 text-sm font-normal text-[#111827] lg:flex">
           <a href="#jelajah" className="transition hover:text-[#0064D2]">{text.explore}</a>
           <a href="#cara-kerja" className="transition hover:text-[#0064D2]">{text.howItWorks}</a>
+          <a href="#harga" className="transition hover:text-[#0064D2]">{text.pricingNav}</a>
+          <a href="#tentang" className="transition hover:text-[#0064D2]">{text.aboutNav}</a>
           <button onClick={partnerRegistered ? openDashboard : openPartner} className="transition hover:text-[#0064D2]">{partnerRegistered ? text.dashboardNav : text.becomeOwner}</button>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-full border border-[#D9D8D0] bg-white p-1 text-[11px] font-extrabold shadow-sm" aria-label="Language selector">
+          <button
+            type="button"
+            onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+            className="grid h-10 w-10 place-items-center rounded-full border border-[#D9D8D0] bg-white text-[#073B6F] shadow-sm transition hover:border-[#0064D2] hover:text-[#0064D2]"
+            aria-label={theme === "dark" ? text.themeToLight : text.themeToDark}
+            title={theme === "dark" ? text.themeToLight : text.themeToDark}
+          >
+            <Icon name={theme === "dark" ? "sun" : "moon"} size={18} />
+          </button>
+          <div className="flex items-center rounded-full border border-[#D9D8D0] bg-white p-1 text-[11px] font-medium shadow-sm" aria-label="Language selector">
             <button onClick={() => setLanguage("id")} className={`rounded-full px-2.5 py-1.5 transition ${language === "id" ? "bg-[#0064D2] text-white" : "text-stone-400 hover:text-[#0064D2]"}`}>IND</button>
             <span className="text-stone-300">|</span>
             <button onClick={() => setLanguage("en")} className={`rounded-full px-2.5 py-1.5 transition ${language === "en" ? "bg-[#0064D2] text-white" : "text-stone-400 hover:text-[#0064D2]"}`}>ENG</button>
           </div>
-          <button onClick={() => openAuth("login")} className="hidden rounded-full border border-[#D9D8D0] px-5 py-2.5 text-sm font-bold transition hover:bg-white lg:block">{text.login}</button>
-          <button onClick={() => openAuth("register")} className="hidden rounded-full bg-[#0064D2] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#0055B3] lg:block">{text.register}</button>
+          <button onClick={() => openAuth("login")} className="hidden rounded-[10px] px-4 py-2.5 text-sm font-normal transition hover:bg-[#F3F7FB] lg:block">{text.login}</button>
+          <button onClick={() => openAuth("register")} className="hidden rounded-[10px] bg-[#0064D2] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#0055B3] lg:block">{text.register}</button>
           <button
             onClick={() => setMobileMenuOpen((open) => !open)}
-            className="grid h-10 w-10 place-items-center rounded-full border border-[#D9D8D0] transition hover:border-[#0064D2] hover:text-[#0064D2] md:hidden"
+            className="grid h-10 w-10 place-items-center rounded-full border border-[#D9D8D0] transition hover:border-[#0064D2] hover:text-[#0064D2] lg:hidden"
             aria-label={mobileMenuOpen ? text.closeMenu : text.openMenu}
             aria-expanded={mobileMenuOpen}
             aria-controls="mobile-navigation"
@@ -787,15 +921,17 @@ export default function App() {
           </button>
         </div>
         {mobileMenuOpen && (
-          <div id="mobile-navigation" className="absolute left-5 right-5 top-[calc(100%-0.5rem)] rounded-[22px] border border-[#DFEAF5] bg-white p-3 shadow-[0_22px_60px_rgba(0,74,155,.18)] md:hidden">
-            <div className="grid gap-1 text-sm font-bold">
+          <div id="mobile-navigation" className="absolute left-5 right-5 top-[calc(100%-0.5rem)] rounded-[22px] border border-[#DFEAF5] bg-white p-3 shadow-[0_22px_60px_rgba(0,74,155,.18)] lg:hidden">
+            <div className="grid gap-1 text-sm font-medium">
               <a href="#jelajah" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.explore}</a>
               <a href="#cara-kerja" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.howItWorks}</a>
+              <a href="#harga" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.pricingNav}</a>
+              <a href="#tentang" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.aboutNav}</a>
               <button onClick={partnerRegistered ? openDashboard : openPartner} className="rounded-[14px] px-4 py-3 text-left text-[#073B6F] transition hover:bg-[#F3F7FB]">{partnerRegistered ? text.dashboardNav : text.becomeOwner}</button>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-2 border-t border-[#EEF2F6] pt-3">
-              <button onClick={() => openAuth("login")} className="rounded-[13px] border border-[#D9D8D0] px-3 py-3 text-sm font-bold text-[#073B6F]">{text.login}</button>
-              <button onClick={() => openAuth("register")} className="rounded-[13px] bg-[#0064D2] px-3 py-3 text-sm font-bold text-white">{text.register}</button>
+              <button onClick={() => openAuth("login")} className="rounded-[13px] border border-[#D9D8D0] px-3 py-3 text-sm font-medium text-[#073B6F]">{text.login}</button>
+              <button onClick={() => openAuth("register")} className="rounded-[13px] bg-[#0064D2] px-3 py-3 text-sm font-medium text-white">{text.register}</button>
             </div>
           </div>
         )}
@@ -804,13 +940,13 @@ export default function App() {
       <header className="relative mx-auto max-w-[1240px] px-5 pb-10 pt-5 md:px-8 md:pb-14 md:pt-8">
         <div className="relative grid items-center gap-12 lg:grid-cols-[1.05fr_.95fr]" data-reveal>
           <div className="relative z-10">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-[#EAF4FF] px-3.5 py-2 text-xs font-bold uppercase tracking-[0.12em]">
-              <span className="text-[#0064D2]"><Icon name="sparkles" size={16} /></span> <span className="text-[#111827]">{text.eyebrow}</span>
+            <div className="mb-6 inline-flex items-center gap-1.5 rounded-full bg-[#EAF4FF] px-3 py-1 text-[11px] font-normal uppercase tracking-[0.06em]">
+              <span className="text-[#0064D2]"><Icon name="sparkles" size={12} /></span> <span className="text-[#0064D2]">{text.eyebrow}</span>
             </div>
-            <h1 className="max-w-[680px] text-[clamp(2.5rem,11vw,4.5rem)] font-extrabold leading-[1.03] tracking-[-0.055em] sm:text-6xl lg:text-[72px]">
-              <span className="text-[#111827]">{text.heroStart}</span> <span className="font-serif font-normal italic text-[#0064D2]">{text.heroAccent}</span>
+            <h1 className="max-w-[640px] text-[clamp(2.4rem,9vw,4rem)] font-medium leading-[1.08] tracking-[-0.045em] lg:text-[64px]">
+              <span className="text-[#111827]">{text.heroStart}</span> <span className="text-[#0064D2]">{text.heroAccent}</span>
             </h1>
-            <p className="mt-5 max-w-[560px] text-base leading-7 text-stone-600 md:text-lg">
+            <p className="mt-6 max-w-[540px] text-base leading-7 text-stone-500 md:text-lg md:leading-8">
               {text.heroBody}
             </p>
             <div className="mt-8 max-w-[700px] rounded-[22px] bg-white p-2.5 shadow-[0_20px_55px_rgba(0,100,210,.14)] ring-1 ring-black/5">
@@ -818,8 +954,8 @@ export default function App() {
                 <label className="flex min-w-0 flex-1 items-center gap-3 rounded-[16px] px-4 py-3 sm:py-2">
                   <span className="text-[#0064D2]"><Icon name="location" size={21} /></span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-stone-500">{text.location}</span>
-                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={text.locationPlaceholder} className="w-full bg-transparent text-[15px] font-semibold text-[#073B6F] outline-none placeholder:text-stone-500" />
+                    <span className="block text-[11px] font-medium uppercase tracking-[0.08em] text-stone-500">{text.location}</span>
+                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={text.locationPlaceholder} className="w-full bg-transparent text-[15px] font-medium text-[#073B6F] outline-none placeholder:text-stone-500" />
                   </span>
                   {query && <button type="button" onClick={() => setQuery("")} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-stone-500 transition hover:bg-[#EAF4FF] hover:text-[#0064D2]" aria-label={text.clearSearch}><Icon name="x" size={15}/></button>}
                 </label>
@@ -827,14 +963,14 @@ export default function App() {
                 <label className="flex items-center gap-3 rounded-[16px] px-4 py-3 sm:w-[190px] sm:py-2">
                   <span className="text-[#0064D2]"><Icon name="home" size={20} /></span>
                   <span className="flex-1">
-                    <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-stone-500">{text.propertyType}</span>
-                    <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full appearance-none bg-transparent text-[15px] font-semibold outline-none">
+                    <span className="block text-[11px] font-medium uppercase tracking-[0.08em] text-stone-500">{text.propertyType}</span>
+                    <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full appearance-none bg-transparent text-[15px] font-medium outline-none">
                       <option value="Semua">{categoryLabel("Semua", language)}</option><option value="Kos">{categoryLabel("Kos", language)}</option><option value="Kontrakan">{categoryLabel("Kontrakan", language)}</option><option value="Vila">{categoryLabel("Vila", language)}</option>
                     </select>
                   </span>
                   <Icon name="chevron" size={16} />
                 </label>
-                <a href="#jelajah" className="flex min-h-[52px] items-center justify-center gap-2 rounded-[16px] bg-[#FFB700] px-6 py-4 font-bold text-[#073B6F] transition hover:-translate-y-0.5 hover:bg-[#EAA700]">
+                <a href="#jelajah" className="flex min-h-[52px] items-center justify-center gap-2 rounded-[12px] bg-[#FFB700] px-6 py-4 font-medium text-[#073B6F] transition hover:-translate-y-0.5 hover:bg-[#EAA700]">
                   <Icon name="search" size={19} /> {text.search}
                 </a>
               </div>
@@ -842,9 +978,9 @@ export default function App() {
             <Liquid
               blur={8}
               contrast={20}
-              fill="#FFFFFF"
-              shadow="0 8px 24px rgba(0, 74, 155, .08)"
-              className="mt-6 flex flex-wrap items-center gap-2 text-xs font-semibold text-stone-500 sm:gap-3"
+              fill={theme === "dark" ? "#13293E" : "#FFFFFF"}
+              shadow={theme === "dark" ? "0 8px 24px rgba(0, 0, 0, .28)" : "0 8px 24px rgba(0, 74, 155, .08)"}
+              className="mt-6 flex flex-wrap items-center gap-2 text-[13px] font-medium text-stone-500 sm:gap-3"
             >
               <Liquid.Item observe className="flex items-center gap-2 rounded-full px-3 py-2">
                 <span className="text-[#0877E8]"><Icon name="shield" size={17}/></span> {text.verifiedOwners}
@@ -856,45 +992,85 @@ export default function App() {
           </div>
           <div className="relative">
             <div className="hidden min-h-[480px] lg:block">
-            <div className="absolute right-0 top-0 h-[430px] w-[88%] rotate-2 overflow-hidden rounded-[120px_32px_120px_32px]">
-              <img src="https://images.unsplash.com/photo-1692736933760-8a8a9b8c1b6f?auto=format&fit=crop&w=1200&q=88" alt="Vila tropis dengan kolam renang" className="h-full w-full object-cover" />
-            </div>
-            <div className="absolute bottom-0 left-2 w-[250px] rounded-[24px] bg-white p-3 shadow-[0_22px_60px_rgba(0,74,155,.2)]">
-              <img src="https://images.unsplash.com/photo-1613553474179-e1eda3ea5734?auto=format&fit=crop&w=600&q=85" alt="Kamar nyaman dan terang" className="h-32 w-full rounded-[16px] object-cover" />
-              <div className="flex items-center justify-between px-1 pb-1 pt-3">
-              <div><p className="text-xs font-bold text-[#0064D2]">{text.curated}</p><p className="mt-1 font-bold">Nyaman di Setiabudi</p></div>
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-[#EDF6FF]"><Icon name="arrow" size={17}/></span>
+              <div className="absolute right-0 top-0 h-[430px] w-[88%] rotate-2 overflow-hidden rounded-[120px_32px_120px_32px] bg-[#DDEEFF]" aria-roledescription="carousel" aria-label={text.platinumPick}>
+                {heroCount > 0 ? platinumListings.map((item, index) => (
+                  <img
+                    key={item.id}
+                    src={item.image.replace("w=1000", "w=1400")}
+                    alt={item.title}
+                    aria-hidden={index !== heroSlide % heroCount}
+                    className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${index === heroSlide % heroCount ? "opacity-100" : "opacity-0"}`}
+                  />
+                )) : (
+                  <img src="https://images.unsplash.com/photo-1692736933760-8a8a9b8c1b6f?auto=format&fit=crop&w=1200&q=88" alt="Vila tropis dengan kolam renang" className="h-full w-full object-cover" />
+                )}
+                {activeHeroListing && (
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent px-10 pb-9 pt-20 text-right">
+                    <TrustedBadge plan="platinum" label={text.platinumPick} size="md" />
+                    <button type="button" onClick={() => openListing(activeHeroListing)} className="mt-2 block w-full text-right text-white">
+                      <span className="block text-lg font-medium tracking-[-0.02em]">{activeHeroListing.title}</span>
+                      <span className="block text-sm text-white/75">{activeHeroListing.location}</span>
+                    </button>
+                    {heroCount > 1 && (
+                      <div className="mt-3 flex justify-end gap-1.5">
+                        {platinumListings.map((item, index) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setHeroSlide(index)}
+                            className={`h-1.5 rounded-full transition-all ${index === heroSlide % heroCount ? "w-6 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80"}`}
+                            aria-label={`${text.platinumPick} ${index + 1}: ${item.title}`}
+                            aria-current={index === heroSlide % heroCount}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="absolute bottom-0 left-2 w-[250px] rounded-[24px] bg-white p-3 shadow-[0_22px_60px_rgba(0,74,155,.2)]">
+                <img src="https://images.unsplash.com/photo-1613553474179-e1eda3ea5734?auto=format&fit=crop&w=600&q=85" alt="Kamar nyaman dan terang" className="h-32 w-full rounded-[16px] object-cover" />
+                <div className="flex items-center justify-between px-1 pb-1 pt-3">
+                  <div><p className="text-xs font-medium text-[#0064D2]">{text.curated}</p><p className="mt-1 font-medium tracking-[-0.01em]">Nyaman di Setiabudi</p></div>
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-[#EDF6FF]"><Icon name="arrow" size={17}/></span>
+                </div>
+              </div>
+              <div className="absolute right-5 top-8 flex items-center gap-3 rounded-full bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-[#FFF4D6] text-[#0064D2]"><Icon name="heart" size={18}/></span>
+                <span><strong className="block text-sm font-medium">{text.curated}</strong><small className="text-stone-500">{text.exploreReady}</small></span>
               </div>
             </div>
-            <div className="absolute right-5 top-8 flex items-center gap-3 rounded-full bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-[#FFF4D6] text-[#0064D2]"><Icon name="heart" size={18}/></span>
-               <span><strong className="block text-sm">{text.curated}</strong><small className="text-stone-500">{text.exploreReady}</small></span>
-             </div>
-            </div>
-            </div>
-            <div className="mt-6 flex items-center gap-3 rounded-[20px] border border-[#DFEAF5] bg-white p-3 shadow-[0_14px_35px_rgba(0,74,155,.1)] lg:hidden">
-              <img src={listings[1].image} alt={listings[1].title} className="h-16 w-20 shrink-0 rounded-[14px] object-cover" />
-              <div className="min-w-0">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#0064D2]">{text.curated}</p>
-                <p className="mt-1 truncate font-bold text-[#073B6F]">{listings[1].title}</p>
-                <p className="mt-1 text-xs text-stone-500">{listings[1].location}</p>
-              </div>
-              <span className="ml-auto grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#EDF6FF] text-[#0064D2]"><Icon name="arrow" size={17}/></span>
-            </div>
+            {(() => {
+              const mobilePick = activeHeroListing ?? listings[1];
+              return (
+                <button type="button" onClick={() => openListing(mobilePick)} className="mt-6 flex w-full items-center gap-3 rounded-[20px] border border-[#DFEAF5] bg-white p-3 text-left shadow-[0_14px_35px_rgba(0,74,155,.1)] lg:hidden">
+                  <img key={mobilePick.id} src={mobilePick.image} alt={mobilePick.title} className="h-16 w-20 shrink-0 rounded-[14px] object-cover" />
+                  <div className="min-w-0">
+                    {activeHeroListing
+                      ? <TrustedBadge plan="platinum" label={text.platinumPick} />
+                      : <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-[#0064D2]">{text.curated}</p>}
+                    <p className="mt-1 truncate font-medium text-[#073B6F]">{mobilePick.title}</p>
+                    <p className="mt-1 text-xs text-stone-500">{mobilePick.location}</p>
+                  </div>
+                  <span className="ml-auto grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#EDF6FF] text-[#0064D2]"><Icon name="arrow" size={17}/></span>
+                </button>
+              );
+            })()}
           </div>
+        </div>
       </header>
 
       <section id="jelajah" className="bg-white py-16 md:py-24">
         <div className="mx-auto max-w-[1240px] px-5 md:px-8">
-          <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end" data-reveal>
+          <div className="mb-12 flex flex-col items-center gap-7 text-center" data-reveal>
             <div>
-              <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.16em] text-[#0064D2]">{text.curated}</p>
-              <h2 className="text-3xl font-extrabold tracking-[-0.04em] md:text-[42px]">{text.favoritePlaces}</h2>
-              <p className="mt-2 text-stone-500">{filtered.length} {text.propertiesMatch}</p>
+              <p className="mb-4 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">{text.curated}</p>
+              <h2 className="text-balance text-[34px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827] md:text-5xl">{text.favoritePlaces}</h2>
+              <p className="mt-4 text-base text-stone-500 md:text-lg">{filtered.length} {text.propertiesMatch}</p>
             </div>
-            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+            <div className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 pb-1">
               {["Semua", "Kos", "Kontrakan", "Vila"].map((item) => (
-                <button key={item} onClick={() => setCategory(item)} className={`whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-bold transition ${category === item ? "bg-[#0064D2] text-white" : "bg-[#EFF4F9] text-stone-600 hover:bg-[#E2ECF5]"}`}>
+                <button key={item} onClick={() => setCategory(item)} className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${category === item ? "bg-[#0064D2] text-white" : "bg-[#EFF4F9] text-stone-600 hover:bg-[#E2ECF5]"}`}>
                   {categoryLabel(item, language)}
                 </button>
               ))}
@@ -906,13 +1082,13 @@ export default function App() {
             </div>
           ) : (
             <div className="rounded-[28px] bg-[#F1F6FB] py-20 text-center">
-              <p className="text-xl font-bold">{text.noProperties}</p>
-              <button onClick={() => setQuery("")} className="mt-3 text-sm font-bold text-[#0064D2]">{text.clearSearch}</button>
+              <p className="text-xl font-medium tracking-[-0.02em]">{text.noProperties}</p>
+              <button onClick={() => setQuery("")} className="mt-3 text-sm font-medium text-[#0064D2]">{text.clearSearch}</button>
             </div>
           )}
           {filtered.length > 3 && (
             <div className="mt-12 text-center">
-              <button onClick={() => setShowAll(!showAll)} className="inline-flex items-center gap-2 rounded-full border border-[#CFCFC5] px-6 py-3 text-sm font-bold transition hover:bg-[#F3F7FB]">
+              <button onClick={() => setShowAll(!showAll)} className="inline-flex items-center gap-2 rounded-[10px] border border-[#D9D8D0] px-5 py-2.5 text-[15px] font-normal transition hover:bg-[#F3F7FB]">
                 {showAll ? text.showLess : text.seeAll} <Icon name="arrow" size={17} />
               </button>
             </div>
@@ -922,13 +1098,13 @@ export default function App() {
 
       <section className="bg-white py-16 md:py-24">
         <div className="mx-auto max-w-[1240px] px-5 md:px-8">
-          <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end" data-reveal>
+          <div className="mb-12 flex flex-col items-center gap-6 text-center" data-reveal>
             <div>
-              <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.16em] text-[#0064D2]">{text.aroundYou}</p>
-              <h2 className="text-3xl font-extrabold tracking-[-0.04em] md:text-[42px]">{text.mapTitle}</h2>
-              <p className="mt-2 max-w-xl text-stone-500">{text.mapBody}</p>
+              <p className="mb-4 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">{text.aroundYou}</p>
+              <h2 className="text-balance text-[34px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827] md:text-5xl">{text.mapTitle}</h2>
+              <p className="mx-auto mt-4 max-w-xl text-balance text-base leading-7 text-stone-500 md:text-lg">{text.mapBody}</p>
             </div>
-            <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-bold text-[#0064D2] shadow-sm">
+            <div className="flex items-center gap-2 rounded-full border border-[#DFEAF5] bg-white px-4 py-2 text-sm font-medium text-[#0064D2]">
               <span className="h-2.5 w-2.5 rounded-full bg-[#1A8CFF]" />
               {filtered.length} {text.propertiesShown}
             </div>
@@ -966,19 +1142,20 @@ export default function App() {
                       <img src={item.image} alt="" className="h-28 w-full rounded-[13px] object-cover" />
                       <div className="pt-3">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#0064D2]">{categoryLabel(item.type, language)}</p>
+                          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#0064D2]">{categoryLabel(item.type, language)}</p>
                           <StarRating rating={item.rating} compact />
                         </div>
-                        <p className="mt-1 text-[15px] font-extrabold text-[#073B6F]">{item.title}</p>
+                        <p className="mt-1 text-[15px] font-medium tracking-[-0.01em] text-[#111827]">{item.title}</p>
+                        {item.plan && item.plan !== "free" && <div className="mt-1.5"><TrustedBadge plan={item.plan} label={text.trusted} /></div>}
                         <p className="mt-1 text-xs text-stone-500">{item.location}</p>
-                        <p className="mt-2 text-sm font-extrabold text-[#073B6F]">Rp{formatPrice(item.price)} <span className="font-normal text-stone-500">/ {periodLabel(item.period, language)}</span></p>
+                        <p className="mt-2 text-sm font-semibold text-[#111827]">Rp{formatPrice(item.price)} <span className="font-normal text-stone-500">/ {periodLabel(item.period, language)}</span></p>
                       </div>
                       </button>
                       <a
                         href={googleMapsUrl(item)}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-3 flex items-center justify-center gap-1.5 rounded-xl bg-[#EDF6FF] px-3 py-2.5 text-xs font-extrabold text-[#0064D2] transition hover:bg-[#DCEFFF]"
+                        className="mt-3 flex items-center justify-center gap-1.5 rounded-xl bg-[#EDF6FF] px-3 py-2.5 text-xs font-medium text-[#0064D2] transition hover:bg-[#DCEFFF]"
                       >
                         <Icon name="location" size={14} /> {text.openGoogle}
                       </a>
@@ -1004,15 +1181,15 @@ export default function App() {
         <div className="relative mx-auto max-w-[1240px] px-5 md:px-8">
           <div className="grid gap-12 lg:grid-cols-[.8fr_1.2fr] lg:items-center" data-reveal>
             <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-[#FFD45C]">{text.easy}</p>
-              <h2 className="text-4xl font-extrabold leading-tight tracking-[-0.04em] md:text-5xl">{text.confidence}</h2>
-              <p className="mt-5 max-w-md leading-7 text-white/65">{text.confidenceBody}</p>
+              <p className="mb-4 text-xs font-medium uppercase tracking-[0.08em] text-[#FFD45C]">{text.easy}</p>
+              <h2 className="text-balance text-[34px] font-medium leading-[1.1] tracking-[-0.04em] md:text-5xl">{text.confidence}</h2>
+              <p className="mt-5 max-w-md text-base leading-7 text-white/65 md:text-lg">{text.confidenceBody}</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               {text.steps.map(([number, title, stepBody]) => (
                 <div key={number} className="rounded-[22px] border border-white/10 bg-white/[.06] p-6 backdrop-blur">
-                  <span className="mb-12 block font-serif text-3xl italic text-[#FFD45C]">{number}</span>
-                  <h3 className="mb-2 text-lg font-bold">{title}</h3>
+                  <span className="mb-12 block text-sm font-medium tabular-nums text-[#FFD45C]">{number}</span>
+                  <h3 className="mb-2 text-lg font-medium tracking-[-0.02em]">{title}</h3>
                   <p className="text-sm leading-6 text-white/60">{stepBody}</p>
                 </div>
               ))}
@@ -1021,9 +1198,86 @@ export default function App() {
         </div>
       </section>
 
+      <section id="harga" className="scroll-mt-6 bg-white py-16 md:py-24">
+        <div className="mx-auto max-w-[1240px] px-5 md:px-8">
+          <div className="mb-12 text-center" data-reveal>
+            <p className="mb-4 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">{text.pricingKicker}</p>
+            <h2 className="text-balance text-[34px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827] md:text-5xl">{text.pricingTitle}</h2>
+            <p className="mx-auto mt-4 max-w-xl text-balance text-base leading-7 text-stone-500 md:text-lg">{text.pricingBody}</p>
+          </div>
+          <div className="mx-auto grid max-w-[1080px] gap-5 md:grid-cols-3" data-reveal>
+            {(["free", "gold", "platinum"] as const).map((plan) => {
+              const info = text.plans[plan];
+              const { price, original } = PLAN_PRICES[plan];
+              const highlighted = plan === "gold";
+              return (
+                <div key={plan} className={`relative flex flex-col rounded-[24px] border p-7 ${highlighted ? "border-[#0064D2] bg-white shadow-[0_20px_55px_rgba(0,100,210,.14)]" : "border-[#DFEAF5] bg-white"}`}>
+                  {highlighted && <span className="absolute -top-3 left-7 rounded-full bg-[#0064D2] px-3 py-1 text-xs font-medium text-white">{text.popular}</span>}
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-xl font-medium tracking-[-0.02em] text-[#111827]">{info.name}</h3>
+                    {plan !== "free" && <TrustedBadge plan={plan} label={text.trusted} />}
+                  </div>
+                  <p className="mt-2 min-h-[48px] text-sm leading-6 text-stone-500">{info.body}</p>
+                  <div className="mt-6">
+                    {original
+                      ? <p className="text-sm text-stone-400"><span className="sr-only">{text.promoLabel}: </span><s>Rp{formatPrice(original)}</s></p>
+                      : <p className="text-sm text-transparent" aria-hidden="true">-</p>}
+                    <p className="mt-1 flex items-baseline gap-1">
+                      <span className="text-4xl font-medium tabular-nums tracking-[-0.04em] text-[#111827]">{price === 0 ? "Rp0" : `Rp${formatPrice(price)}`}</span>
+                      <span className="text-sm text-stone-500">{text.perMonth}</span>
+                    </p>
+                  </div>
+                  <ul className="mt-6 flex-1 space-y-3 text-sm text-stone-600">
+                    {info.features.map((feature) => (
+                      <li key={feature} className="flex items-start gap-2.5">
+                        <span className="mt-0.5 text-[#0064D2]"><Icon name="check" size={16} /></span>
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={partnerRegistered ? openDashboard : openPartner}
+                    className={`mt-8 w-full rounded-[12px] px-5 py-3 text-sm font-medium transition ${highlighted ? "bg-[#0064D2] text-white hover:bg-[#0055B3]" : "border border-[#D9D8D0] text-[#073B6F] hover:bg-[#F3F7FB]"}`}
+                  >
+                    {info.cta}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-8 flex items-center justify-center gap-2 text-center text-sm text-stone-500">
+            <span className="text-[#0064D2]"><Icon name="shield" size={16} /></span> {text.paymentNote}
+          </p>
+        </div>
+      </section>
+
+      <section id="tentang" className="scroll-mt-6 bg-[#F3F7FB] py-16 md:py-24">
+        <div className="mx-auto grid max-w-[1240px] gap-12 px-5 md:px-8 lg:grid-cols-[1fr_1fr] lg:items-center" data-reveal>
+          <div>
+            <p className="mb-4 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">{text.aboutKicker}</p>
+            <h2 className="text-balance text-[34px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827] md:text-5xl">{text.aboutTitle}</h2>
+            <p className="mt-5 max-w-xl text-base leading-7 text-stone-500 md:text-lg md:leading-8">{text.aboutBody}</p>
+          </div>
+          <div className="grid gap-4">
+            {text.aboutPoints.map(([title, body], index) => (
+              <div key={title} className="flex items-start gap-4 rounded-[20px] border border-[#DFEAF5] bg-white p-5">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#EAF4FF] text-[#0064D2]">
+                  <Icon name={(["chat", "shield", "location"] as const)[index] ?? "check"} size={18} />
+                </span>
+                <div>
+                  <h3 className="font-medium tracking-[-0.02em] text-[#111827]">{title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-stone-500">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <footer className="bg-white px-5 py-9 md:px-8">
         <div className="mx-auto flex max-w-[1240px] flex-col items-center justify-between gap-4 border-t border-stone-200 pt-8 text-sm text-stone-500 sm:flex-row">
-          <span className="font-extrabold text-[#073B6F]">inapmu<span className="text-[#FFB700]">.com</span></span>
+          <span className="font-semibold tracking-[-0.03em] text-[#073B6F]">inapmu<span className="text-[#FFB700]">.com</span></span>
           <p>{text.footer}</p>
           <p>© 2026 inapmu.com Indonesia</p>
         </div>
@@ -1042,6 +1296,7 @@ export default function App() {
                 <button onClick={closeModal} className="absolute right-5 top-5 hidden h-9 w-9 place-items-center rounded-full bg-stone-100 transition hover:bg-stone-200 md:grid" aria-label="Tutup"><Icon name="x" size={18}/></button>
                 <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[#0064D2]">{categoryLabel(selected.type, language)} · {selected.tag}</p>
                 <h2 className="pr-8 text-3xl font-extrabold tracking-[-0.04em]">{selected.title}</h2>
+                {selected.plan && selected.plan !== "free" && <div className="mt-3"><TrustedBadge plan={selected.plan} label={text.trusted} size="md" /></div>}
                 <p className="mt-2 flex items-center gap-1.5 text-sm text-stone-500"><Icon name="location" size={16}/> {selected.location}</p>
                 <a
                   href={googleMapsUrl(selected)}
@@ -1122,15 +1377,15 @@ export default function App() {
                 <img src="https://images.unsplash.com/photo-1675657144518-025804f1812c?auto=format&fit=crop&w=900&q=85" alt="" className="absolute inset-0 h-full w-full object-cover opacity-25 mix-blend-luminosity" />
                 <div className="absolute inset-0 bg-gradient-to-b from-[#0064D2]/60 to-[#002B55]/95" />
                 <div className="relative">
-                  <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.14em] backdrop-blur">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-2 text-[11px] font-normal uppercase tracking-[0.06em] backdrop-blur">
                     <Icon name="sparkles" size={15}/> {text.partnerKicker}
                   </span>
-                  <h2 className="mt-6 text-[42px] font-extrabold leading-[1.05] tracking-[-0.045em]">{text.partnerTitle}</h2>
-                  <p className="mt-4 leading-7 text-white/75">{text.partnerBody}</p>
+                  <h2 className="mt-6 text-[42px] font-medium leading-[1.08] tracking-[-0.045em]">{text.partnerTitle}</h2>
+                  <p className="mt-4 text-base leading-7 text-white/75">{text.partnerBody}</p>
                 </div>
                 <div className="relative space-y-3">
                   {text.partnerBenefits.map((benefit) => (
-                    <div key={benefit} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold backdrop-blur">
+                    <div key={benefit} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-normal backdrop-blur">
                       <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#FFB700] text-[#073B6F]"><Icon name="check" size={15}/></span>
                       {benefit}
                     </div>
@@ -1144,16 +1399,16 @@ export default function App() {
                     <span className="mb-5 grid h-20 w-20 place-items-center rounded-full bg-[#E6F3FF] text-[#0064D2]">
                       <Icon name="check" size={38}/>
                     </span>
-                    <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[#0064D2]">{text.partnerKicker}</p>
-                    <h2 className="max-w-md text-3xl font-extrabold tracking-[-0.04em] text-[#073B6F]">{text.partnerSuccess}</h2>
+                    <p className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">{text.partnerKicker}</p>
+                    <h2 className="max-w-md text-[32px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827]">{text.partnerSuccess}</h2>
                     <p className="mt-3 max-w-md leading-7 text-stone-500">{text.partnerSuccessBody}</p>
-                    <button onClick={openDashboard} className="mt-8 flex items-center gap-2 rounded-full bg-[#0064D2] px-7 py-3.5 text-sm font-bold text-white transition hover:bg-[#0055B3]">{text.openDashboard}<Icon name="arrow" size={17}/></button>
+                    <button onClick={openDashboard} className="mt-8 flex items-center gap-2 rounded-full bg-[#0064D2] px-7 py-3.5 text-sm font-medium text-white transition hover:bg-[#0055B3]">{text.openDashboard}<Icon name="arrow" size={17}/></button>
                   </div>
                 ) : (
                   <>
                     <div className="lg:hidden">
-                      <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[#0064D2]">{text.partnerKicker}</p>
-                      <h2 className="text-3xl font-extrabold tracking-[-0.04em] text-[#073B6F]">{text.partnerTitle}</h2>
+                      <p className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">{text.partnerKicker}</p>
+                      <h2 className="text-[32px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827]">{text.partnerTitle}</h2>
                       <p className="mt-3 text-sm leading-6 text-stone-500">{text.partnerBody}</p>
                     </div>
                     <form
@@ -1187,22 +1442,22 @@ export default function App() {
                     >
                       {/* Honeypot: hidden from humans, bots fill it */}
                       <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
-                      <div ref={partnerTurnstileRef} />
+                      <div ref={partnerTurnstileRef} className="flex justify-center" />
                       <fieldset>
-                        <legend className="mb-4 flex items-center gap-2 text-lg font-extrabold text-[#073B6F]">
-                          <span className="grid h-7 w-7 place-items-center rounded-full bg-[#EAF4FF] text-xs text-[#0064D2]">1</span>
+                        <legend className="mb-4 flex items-center gap-2 text-lg font-medium tracking-[-0.02em] text-[#111827]">
+                          <span className="grid h-7 w-7 place-items-center rounded-full bg-[#EAF4FF] text-xs font-medium tabular-nums text-[#0064D2]">1</span>
                           {text.ownerInfo}
                         </legend>
                         <div className="grid gap-4 sm:grid-cols-2">
-                          <label className="text-sm font-bold text-stone-600 sm:col-span-2">
+                          <label className="text-sm font-medium text-stone-600 sm:col-span-2">
                             {text.fullName}
                             <input required name="fullName" autoComplete="name" className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                           </label>
-                          <label className="text-sm font-bold text-stone-600">
+                          <label className="text-sm font-medium text-stone-600">
                             {text.email}
                             <input required type="email" name="email" autoComplete="email" className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                           </label>
-                          <label className="text-sm font-bold text-stone-600">
+                          <label className="text-sm font-medium text-stone-600">
                             {text.phone}
                             <input required type="tel" name="phone" autoComplete="tel" placeholder="08..." className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                           </label>
@@ -1210,20 +1465,20 @@ export default function App() {
                       </fieldset>
 
                       <fieldset>
-                        <legend className="mb-4 flex items-center gap-2 text-lg font-extrabold text-[#073B6F]">
-                          <span className="grid h-7 w-7 place-items-center rounded-full bg-[#EAF4FF] text-xs text-[#0064D2]">2</span>
+                        <legend className="mb-4 flex items-center gap-2 text-lg font-medium tracking-[-0.02em] text-[#111827]">
+                          <span className="grid h-7 w-7 place-items-center rounded-full bg-[#EAF4FF] text-xs font-medium tabular-nums text-[#0064D2]">2</span>
                           {text.propertyInfo}
                         </legend>
                         <div className="grid gap-4 sm:grid-cols-2">
-                          <label className="text-sm font-bold text-stone-600">
+                          <label className="text-sm font-medium text-stone-600">
                             {text.propertyName}
                             <input required name="propertyName" className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                           </label>
-                          <label className="text-sm font-bold text-stone-600">
+                          <label className="text-sm font-medium text-stone-600">
                             {text.city}
                             <input required name="city" className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                           </label>
-                          <label className="text-sm font-bold text-stone-600 sm:col-span-2">
+                          <label className="text-sm font-medium text-stone-600 sm:col-span-2">
                             {text.propertyType}
                             <select required name="propertyType" defaultValue="" className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15">
                               <option value="" disabled>{text.chooseType}</option>
@@ -1239,8 +1494,8 @@ export default function App() {
                         <input required type="checkbox" className="mt-1 h-4 w-4 accent-[#0064D2]" />
                         <span>{text.agreement}</span>
                       </label>
-                      {partnerError && <p className="text-sm font-bold text-red-600">{partnerError}</p>}
-                      <button type="submit" disabled={submittingPartner} className="flex w-full items-center justify-center gap-2 rounded-[15px] bg-[#FFB700] px-6 py-4 font-extrabold text-[#073B6F] transition hover:bg-[#EAA700] disabled:cursor-not-allowed disabled:opacity-50">
+                      {partnerError && <p className="text-sm font-medium text-red-600">{partnerError}</p>}
+                      <button type="submit" disabled={submittingPartner} className="flex w-full items-center justify-center gap-2 rounded-[15px] bg-[#FFB700] px-6 py-4 font-medium text-[#073B6F] transition hover:bg-[#EAA700] disabled:cursor-not-allowed disabled:opacity-50">
                         {text.submitPartner} <Icon name="arrow" size={18}/>
                       </button>
                     </form>
@@ -1262,45 +1517,45 @@ export default function App() {
             {authResult ? (
               <div className="flex min-h-[480px] flex-col items-center justify-center text-center">
                 <span className="mb-5 grid h-20 w-20 place-items-center rounded-full bg-[#E6F3FF] text-[#0064D2]">
-                  {authResult === "google" ? <span className="text-3xl font-extrabold">G</span> : <Icon name="check" size={38}/>}
+                  {authResult === "google" ? <span className="text-3xl font-medium">G</span> : <Icon name="check" size={38}/>}
                 </span>
-                <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[#0064D2]">inapmu.com</p>
-                <h2 className="text-3xl font-extrabold tracking-[-0.04em] text-[#073B6F]">{authResult === "google" ? text.googleReady : text.authSuccess}</h2>
+                <p className="mb-2 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">inapmu.com</p>
+                <h2 className="text-[32px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827]">{authResult === "google" ? text.googleReady : text.authSuccess}</h2>
                 <p className="mt-3 max-w-sm leading-7 text-stone-500">{authResult === "google" ? text.googleReadyBody : text.authSuccessBody}</p>
-                <button onClick={closeAuth} className="mt-8 rounded-full bg-[#0064D2] px-7 py-3.5 text-sm font-bold text-white transition hover:bg-[#0055B3]">{text.backHome}</button>
+                <button onClick={closeAuth} className="mt-8 rounded-full bg-[#0064D2] px-7 py-3.5 text-sm font-medium text-white transition hover:bg-[#0055B3]">{text.backHome}</button>
               </div>
             ) : (
               <>
                 <div className="pr-12">
-                  <span className="text-xl font-extrabold tracking-[-0.04em] text-[#073B6F]">inapmu<span className="text-[#FFB700]">.com</span></span>
+                  <span className="text-xl font-semibold tracking-[-0.03em] text-[#073B6F]">inapmu<span className="text-[#FFB700]">.com</span></span>
                 </div>
 
                 <div className="mt-8 grid grid-cols-2 rounded-[15px] bg-[#F3F7FB] p-1.5">
                   <button
                     onClick={() => setAuthMode("login")}
-                    className={`rounded-[11px] py-3 text-sm font-extrabold transition ${authMode === "login" ? "bg-white text-[#0064D2] shadow-sm" : "text-stone-400 hover:text-[#073B6F]"}`}
+                    className={`rounded-[11px] py-3 text-sm font-medium transition ${authMode === "login" ? "bg-white text-[#0064D2] shadow-sm" : "text-stone-400 hover:text-[#073B6F]"}`}
                   >
                     {text.login}
                   </button>
                   <button
                     onClick={() => setAuthMode("register")}
-                    className={`rounded-[11px] py-3 text-sm font-extrabold transition ${authMode === "register" ? "bg-[#0064D2] text-white shadow-sm" : "text-stone-400 hover:text-[#073B6F]"}`}
+                    className={`rounded-[11px] py-3 text-sm font-medium transition ${authMode === "register" ? "bg-[#0064D2] text-white shadow-sm" : "text-stone-400 hover:text-[#073B6F]"}`}
                   >
                     {text.register}
                   </button>
                 </div>
 
                 <div className="mt-7 text-center">
-                  <h2 className="text-3xl font-extrabold tracking-[-0.04em] text-[#073B6F]">{authMode === "login" ? text.loginTitle : text.registerTitle}</h2>
-                  <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-stone-500">{authMode === "login" ? text.loginBody : text.registerBody}</p>
+                  <h2 className="text-[32px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827]">{authMode === "login" ? text.loginTitle : text.registerTitle}</h2>
+                  <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-stone-500 md:text-[15px]">{authMode === "login" ? text.loginBody : text.registerBody}</p>
                 </div>
 
-                <button type="button" onClick={() => window.location.assign("/api/auth/google/start")} className="mt-7 flex w-full items-center justify-center gap-3 rounded-[14px] border border-stone-200 bg-white px-4 py-3.5 text-sm font-extrabold text-[#073B6F] transition hover:border-[#9AC9F8] hover:bg-[#F7FAFE]">
-                  <span className="grid h-6 w-6 place-items-center rounded-full border border-stone-200 text-sm font-extrabold text-[#4285F4]">G</span>
+                <button type="button" onClick={() => window.location.assign("/api/auth/google/start")} className="mt-7 flex w-full items-center justify-center gap-3 rounded-[14px] border border-stone-200 bg-white px-4 py-3.5 text-sm font-medium text-[#073B6F] transition hover:border-[#9AC9F8] hover:bg-[#F7FAFE]">
+                  <span className="grid h-6 w-6 place-items-center rounded-full border border-stone-200 text-sm font-semibold text-[#4285F4]">G</span>
                   {text.continueGoogle}
                 </button>
 
-                <div className="my-6 flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.1em] text-stone-400">
+                <div className="my-6 flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.08em] text-stone-400">
                   <span className="h-px flex-1 bg-stone-200" />
                   {text.orEmail}
                   <span className="h-px flex-1 bg-stone-200" />
@@ -1339,26 +1594,26 @@ export default function App() {
                     }
                   }}
                 >
-                  <div ref={authTurnstileRef} />
-                  <label className="block text-sm font-bold text-stone-600">
+                  <div ref={authTurnstileRef} className="flex justify-center" />
+                  <label className="block text-sm font-medium text-stone-600">
                     {text.email}
                     <input required type="email" name="email" autoComplete="email" className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                   </label>
-                  <label className="block text-sm font-bold text-stone-600">
+                  <label className="block text-sm font-medium text-stone-600">
                     <span className="flex items-center justify-between">
                       {text.password}
-                      {authMode === "login" && <button type="button" className="text-xs font-bold text-[#0064D2] hover:underline">{text.forgotPassword}</button>}
+                      {authMode === "login" && <button type="button" className="text-xs font-medium text-[#0064D2] hover:underline">{text.forgotPassword}</button>}
                     </span>
                       <input required minLength={12} type="password" name="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                   </label>
                   {authMode === "register" && (
-                    <label className="block text-sm font-bold text-stone-600">
+                    <label className="block text-sm font-medium text-stone-600">
                       {text.confirmPassword}
                        <input required minLength={12} type="password" name="confirmPassword" autoComplete="new-password" onInput={(event) => event.currentTarget.setCustomValidity("")} className="mt-2 w-full rounded-[14px] border border-stone-200 bg-[#F7FAFE] px-4 py-3.5 font-medium text-[#073B6F] outline-none transition focus:border-[#0064D2] focus:ring-2 focus:ring-[#0064D2]/15" />
                     </label>
                   )}
-                  {authError && <p className="text-sm font-bold text-red-600">{authError}</p>}
-                  <button type="submit" disabled={submittingAuth} className="mt-2 flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#FFB700] px-5 py-4 font-extrabold text-[#073B6F] transition hover:bg-[#EAA700] disabled:cursor-not-allowed disabled:opacity-50">
+                  {authError && <p className="text-sm font-medium text-red-600">{authError}</p>}
+                  <button type="submit" disabled={submittingAuth} className="mt-2 flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#FFB700] px-5 py-4 font-medium text-[#073B6F] transition hover:bg-[#EAA700] disabled:cursor-not-allowed disabled:opacity-50">
                     {authMode === "login" ? text.loginAction : text.registerAction} <Icon name="arrow" size={18}/>
                   </button>
                 </form>

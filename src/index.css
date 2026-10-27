@@ -1,8 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:opsz,wght@14..32,400..800&display=swap');
 @import 'tailwindcss';
 
 @theme {
-  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-serif: 'Instrument Serif', serif;
 }
 
@@ -24,12 +24,20 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
   background: #ffffff;
   color: var(--brand-ink);
   -webkit-font-smoothing: antialiased;
   font-optical-sizing: auto;
   text-rendering: optimizeLegibility;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.03em;
+  }
 }
 
 button,
@@ -74,7 +82,7 @@ textarea:focus-visible {
 }
 
 .leaflet-container {
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
   background: #ddeeff;
 }
 
@@ -97,7 +105,7 @@ textarea:focus-visible {
   place-items: center;
   border: 0 !important;
   color: var(--brand-ink) !important;
-  font: 700 20px/1 'Plus Jakarta Sans', sans-serif !important;
+  font: 700 20px/1 'Inter', ui-sans-serif, system-ui, sans-serif !important;
 }
 
 .leaflet-control-zoom-in {
@@ -262,3 +270,161 @@ textarea:focus-visible {
 [class~="hover:bg-[#0055B3]"]:hover { background-color: #004bb8 !important; }
 [class~="hover:bg-[#EAA700]"]:hover { background-color: #d99300 !important; }
 [class~="hover:text-[#0064D2]"]:hover { color: var(--brand-blue) !important; }
+
+/* ==========================================================================
+   Dark mode
+   The UI hardcodes light colours as Tailwind arbitrary values (bg-white,
+   bg-[#F3F7FB], text-stone-500, ...). Instead of rewriting every className,
+   html.dark remaps those same tokens onto a navy palette. App.tsx toggles the
+   class; public/theme-init.js applies it before first paint.
+   ========================================================================== */
+
+html.dark {
+  color-scheme: dark;
+
+  --brand-blue: #2f7cf0;
+  --brand-ink: #e9eff6;
+  --brand-surface: rgba(111, 176, 255, 0.13);
+
+  --dk-bg: #0a1826;
+  --dk-surface: #13293e;
+  --dk-surface-2: #0e2033;
+  --dk-input: #0c1d2f;
+  --dk-elevated: #1d3a55;
+  --dk-border: #26435f;
+  --dk-border-soft: #1e3a52;
+
+  --dk-text: #e9eff6;
+  --dk-text-mid: #aebfcd;
+  --dk-text-mute: #93a8bb;
+  --dk-text-faint: #71879b;
+
+  --dk-accent-text: #6fb0ff;
+  --dk-accent-soft: rgba(111, 176, 255, 0.13);
+  --dk-amber-soft: rgba(242, 169, 0, 0.15);
+}
+
+html.dark body {
+  background: var(--dk-bg);
+  color: var(--dk-text);
+}
+
+/* --- Surfaces ------------------------------------------------------------ */
+html.dark [class~="bg-white"] { background-color: var(--dk-surface) !important; }
+html.dark [class~="bg-white/70"] { background-color: rgba(10, 24, 38, 0.72) !important; }
+html.dark [class~="bg-white/90"],
+html.dark [class~="bg-white/95"] { background-color: rgba(19, 41, 62, 0.92) !important; }
+html.dark [class~="bg-stone-100"],
+html.dark [class~="bg-[#F3F7FB]"],
+html.dark [class~="bg-[#EFF4F9]"],
+html.dark [class~="bg-[#F1F6FB]"],
+html.dark [class~="bg-[#DDEEFF]"] { background-color: var(--dk-surface-2) !important; }
+html.dark [class~="bg-stone-200"] { background-color: var(--dk-border) !important; }
+html.dark [class~="bg-[#F7FAFE]"] { background-color: var(--dk-input) !important; }
+html.dark [class~="bg-[#EAF4FF]"],
+html.dark [class~="bg-[#EDF6FF]"],
+html.dark [class~="bg-[#E6F3FF]"] { background-color: var(--dk-accent-soft) !important; }
+html.dark [class~="bg-[#FFF4D6]"] { background-color: var(--dk-amber-soft) !important; }
+html.dark [class~="bg-[#073B6F]"] { background-color: var(--dk-elevated) !important; }
+
+/* --- Hover surfaces -------------------------------------------------------- */
+html.dark [class~="hover:bg-white"]:hover,
+html.dark [class~="hover:bg-stone-200"]:hover,
+html.dark [class~="hover:bg-[#F3F7FB]"]:hover,
+html.dark [class~="hover:bg-[#F7FAFE]"]:hover,
+html.dark [class~="hover:bg-[#E2ECF5]"]:hover,
+html.dark [class~="hover:bg-[#DCEFFF]"]:hover { background-color: var(--dk-elevated) !important; }
+html.dark [class~="hover:bg-[#EAF4FF]"]:hover { background-color: var(--dk-accent-soft) !important; }
+html.dark [class~="hover:bg-[#0055B3]"]:hover { background-color: #1d74e0 !important; }
+
+/* --- Text ---------------------------------------------------------------- */
+html.dark [class~="text-[#073B6F]"],
+html.dark [class~="text-[#111827]"],
+html.dark [class~="text-stone-800"],
+html.dark [class~="text-stone-700"] { color: var(--dk-text) !important; }
+html.dark [class~="text-stone-600"] { color: var(--dk-text-mid) !important; }
+html.dark [class~="text-stone-500"] { color: var(--dk-text-mute) !important; }
+html.dark [class~="text-stone-400"],
+html.dark [class~="text-stone-300"] { color: var(--dk-text-faint) !important; }
+html.dark [class~="placeholder:text-stone-500"]::placeholder { color: var(--dk-text-mute) !important; }
+html.dark [class~="text-[#0064D2]"],
+html.dark [class~="text-[#0877E8]"] { color: var(--dk-accent-text) !important; }
+html.dark [class~="text-[#9A6A00]"] { color: #f5bd4f !important; }
+html.dark [class~="text-[#285E91]"] { color: #a9c9ee !important; }
+html.dark [class~="text-red-600"] { color: #f87171 !important; }
+
+html.dark [class~="hover:text-[#0064D2]"]:hover,
+html.dark .group:hover [class~="group-hover:text-[#0064D2]"] { color: var(--dk-accent-text) !important; }
+html.dark [class~="hover:text-[#073B6F]"]:hover { color: var(--dk-text) !important; }
+
+/* Keep dark text on amber buttons and badges, and white text on blue ones. */
+html.dark [class~="bg-[#FFB700]"][class~="text-[#073B6F]"] { color: #092f50 !important; }
+html.dark [class~="bg-[#0064D2]"] [class~="text-[#0064D2]"] { color: #ffffff !important; }
+
+/* --- Borders, rings, focus ---------------------------------------------- */
+html.dark [class~="border-stone-200"],
+html.dark [class~="border-[#D9D8D0]"],
+html.dark [class~="border-[#C9C9BF]"],
+html.dark [class~="border-[#DFEAF5]"],
+html.dark [class~="border-[#C9D8E7]"] { border-color: var(--dk-border) !important; }
+html.dark [class~="border-[#EEF2F6]"] { border-color: var(--dk-border-soft) !important; }
+html.dark [class~="border-[#B9DDFC]"],
+html.dark [class~="border-[#8EC8FA]"] { border-color: #2f5c8c !important; }
+html.dark [class~="border-white"] { border-color: var(--dk-surface) !important; }
+html.dark [class~="hover:border-[#0064D2]"]:hover,
+html.dark [class~="focus:border-[#0064D2]"]:focus { border-color: var(--dk-accent-text) !important; }
+html.dark [class~="hover:border-[#9AC9F8]"]:hover { border-color: #3d6a99 !important; }
+html.dark [class~="focus:ring-[#0064D2]/15"]:focus { --tw-ring-color: rgba(111, 176, 255, 0.22) !important; }
+html.dark [class~="ring-black/5"] { --tw-ring-color: rgba(255, 255, 255, 0.07) !important; }
+
+/* Blue-tinted arbitrary shadows read as a glow on navy; swap for neutral. */
+html.dark [class*="shadow-[0_"] { --tw-shadow: 0 18px 45px rgba(0, 0, 0, 0.35) !important; }
+
+/* --- Star rating (empty part) -------------------------------------------- */
+html.dark .star-stop-track { stop-color: #29445d; }
+html.dark .star-path-empty { stroke: #3f617f; }
+
+/* --- Scrollbar & selection ------------------------------------------------ */
+html.dark ::-webkit-scrollbar-track { background: #0d1f31; }
+html.dark ::-webkit-scrollbar-thumb {
+  border-color: #0d1f31;
+  background: #33506c;
+}
+html.dark ::selection {
+  background: rgba(111, 176, 255, 0.32);
+  color: #f2f7fc;
+}
+
+/* --- Partner dashboard inputs ------------------------------------------- */
+html.dark .partner-input {
+  border-color: var(--dk-border);
+  background: var(--dk-input);
+  color: var(--dk-text);
+}
+html.dark .partner-input:focus {
+  border-color: var(--dk-accent-text);
+  box-shadow: 0 0 0 3px rgba(111, 176, 255, 0.2);
+}
+
+/* --- Leaflet map ---------------------------------------------------------
+   Invert the light street tiles into a dark basemap. Markers and popups live
+   outside .leaflet-tile-pane, so they keep their own colours. */
+html.dark .leaflet-container { background: var(--dk-surface-2); }
+html.dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.65);
+}
+html.dark .leaflet-control-zoom a {
+  background-color: var(--dk-surface) !important;
+  color: var(--dk-text) !important;
+}
+html.dark .leaflet-control-zoom a:hover { background-color: var(--dk-elevated) !important; }
+html.dark .leaflet-control-attribution {
+  background: rgba(10, 24, 38, 0.8) !important;
+  color: var(--dk-text-mute) !important;
+}
+html.dark .leaflet-control-attribution a { color: var(--dk-accent-text) !important; }
+html.dark .leaflet-popup-content-wrapper,
+html.dark .leaflet-popup-tip {
+  background: var(--dk-surface) !important;
+  color: var(--dk-text) !important;
+}
