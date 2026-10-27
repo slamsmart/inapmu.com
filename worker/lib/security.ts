@@ -87,8 +87,11 @@ export function honeypotTripped(formData: FormData): boolean {
 
 /** Reject oversized bodies early (Workers already caps at 100MB; we cap lower). */
 export function bodyTooLarge(request: Request, maxBytes: number): boolean {
-  const contentLength = Number(request.headers.get("content-length") ?? "0");
-  return contentLength > maxBytes;
+  const raw = request.headers.get("content-length");
+  if (raw === null) return false;
+  if (!/^\d+$/.test(raw)) return true;
+  const contentLength = Number(raw);
+  return !Number.isSafeInteger(contentLength) || contentLength > maxBytes;
 }
 
 /**

@@ -20,11 +20,11 @@ Cloudflare Worker "inapmu-api"  ← https://inapmu-api.aicm-id.workers.dev
 | Method | Path | Fungsi |
 |---|---|---|
 | POST | `/api/partners/apply` | Pendaftaran mitra (JSON multipart + honeypot + Turnstile) |
-| POST | `/api/listings` | Buat listing + upload ≤8 foto (R2) |
+| POST | `/api/listings` | Buat listing + upload ≤8 foto (R2), wajib Bearer session |
 | GET  | `/api/listings?city=&limit=` | Feed listing approved |
-| POST | `/api/verifications` | Upload KTP (R2 private, tak bisa diakses publik) |
+| POST | `/api/verifications` | Upload KTP (wajib Bearer session; R2 private) |
 | POST | `/api/auth/register` / `login`, GET `/api/auth/me` | Auth PBKDF2 + token HMAC |
-| GET  | `/media/*` | Proxy R2 (block `ktp/*`, path traversal, cache immutable) |
+| GET  | `/media/*` | Proxy hanya foto listing yang sudah approved |
 | GET  | `/api/health` | Health check |
 
 ## Proteksi bot/serangan (defense in depth)
@@ -38,13 +38,14 @@ Cloudflare Worker "inapmu-api"  ← https://inapmu-api.aicm-id.workers.dev
 7. **Password**: PBKDF2-SHA256 100k iterasi + salt, perbandingan constant-time.
 8. **Session**: HMAC-SHA256 signed token, TTL 7 hari, secret di Worker Secrets.
 9. **KTP**: disimpan di prefix `ktp/` — `/media/ktp/*` selalu 403.
-10. **CORS**: hanya origin `*.inapmu.com` + localhost.
+10. **CORS**: hanya `https://inapmu.com`, `https://www.inapmu.com`, dan localhost dev exact-origin.
 11. **Dedup**: pendaftaran mitra dari IP+email sama dalam 24 jam diabaikan.
+12. **Auth abuse**: register/login juga wajib Turnstile + rate limit.
 
 ## Konfigurasi yang sudah aktif
 
-- Secret: `SESSION_SECRET` ✅
-- **Belum**: `TURNSTILE_SECRET_KEY` — sebelum diisi, SEMUA request publik (apply/listing/KTP) di production ditolak 403. Login/register tetap jalan.
+- Secret terpasang: `SESSION_SECRET` + `TURNSTILE_SECRET_KEY`.
+- Konfigurasi deploy production menonaktifkan `workers.dev`; gunakan custom domain yang dilindungi Cloudflare.
 
 ## Setup Turnstile (WAJIB sebelum form publik dipakai)
 
@@ -59,6 +60,30 @@ Cloudflare Worker "inapmu-api"  ← https://inapmu-api.aicm-id.workers.dev
    VITE_TURNSTILE_SITE_KEY=0x4AAAAxxx_sitekey
    ```
 5. Redeploy: `npx wrangler deploy`
+
+## Setup Google OAuth
+
+1. Buka **Google Cloud Console → APIs & Services → Credentials**.
+2. Buat **OAuth client ID** dengan tipe **Web application**.
+3. Isi **Authorized JavaScript origins**:
+   - `https://inapmu.com`
+   - `https://www.inapmu.com`
+4. Isi **Authorized redirect URIs**:
+   - `https://inapmu.com/api/auth/google/callback`
+5. Pasang credential di Cloudflare Worker. Jangan simpan nilainya di repo:
+   ```bash
+   npx wrangler secret put GOOGLE_CLIENT_ID
+   npx wrangler secret put GOOGLE_CLIENT_SECRET
+   ```
+6. Jalankan migrasi Google OAuth lalu deploy API dan web:
+   ```bash
+   npx wrangler d1 migrations apply inapmu-db --remote
+   npx wrangler deploy --config wrangler.jsonc
+   npx wrangler deploy --config wrangler.web.jsonc
+   ```
+
+Callback OAuth: `/api/auth/google/callback`. Session disimpan sebagai cookie
+HttpOnly dan akun Google dihubungkan memakai `google_subject` yang stabil.
 
 ## Perintah rutin
 
@@ -85,10 +110,8 @@ npx wrangler d1 execute inapmu-db --remote --command "SELECT * FROM partners ORD
 - Zone Cloudflare `inapmu.com` **active** (id `daae675e29e8731646be77bd340d0e55`), plan Free.
 - Worker **inapmu-web** (SPA): custom domain `inapmu.com` (apex) + route `www.inapmu.com/*`.
 - Worker **inapmu-api**: routes `inapmu.com/api*`, `inapmu.com/media*`, `www.inapmu.com/api*`, `www.inapmu.com/media*` (same-origin, CORS `*.inapmu.com`).
-- `workers.dev` tetap aktif sebagai cadangan:
-  - Web: `https://inapmu-web.aicm-id.workers.dev`
-  - API: `https://inapmu-api.aicm-id.workers.dev` (health 200; register/login/me lolos smoke test)
-- Secret lengkap: `SESSION_SECRET` + `TURNSTILE_SECRET_KEY`.
+- Secret terpasang: `SESSION_SECRET` + `TURNSTILE_SECRET_KEY`.
+- Endpoint `workers.dev` lama masih dapat merespons sampai deployment konfigurasi hardening selesai; setelah deploy, jalur produksi hanya melalui custom domain.
 
 ### SATU langkah tersisa — delegasi NS di registrar
 
@@ -112,12 +135,11 @@ ali.ns.cloudflare.com
 osmar.ns.cloudflare.com
 ```
 
-### Preview penuh sambil menunggu NS (same-origin)
+### Preview dan production
 
-`https://inapmu-web.aicm-id.workers.dev` sekarang proxy `/api/*` + `/media/*`
-ke `inapmu-api` lewat **service binding** `env.API` (bukan fetch HTTP — subrequest
-ke `*.workers.dev` diblokir edge Cloudflare, error 1042). Register/login/listing
-sudah diverifikasi jalan lewat host ini.
+Konfigurasi production sengaja menonaktifkan endpoint `workers.dev` agar jalur
+cadangan tidak melewati WAF/rate limit custom domain. Preview lokal tetap memakai
+service binding melalui `npx wrangler dev --port 8787` dan Vite proxy.
 
 Setelah NS delegasi berubah: tunggu propagasi registry (biasanya < 1 jam) → cert
 Universal SSL ter-issued otomatis → `https://inapmu.com` langsung jalan: SPA di `/`,
@@ -140,5 +162,3 @@ Verifikasi headless (challenge tak bisa disolve di headless): script + API +
 widget mount OK di modal auth & partner apply; submit tanpa token → 403
 `bot_suspected` (server-side reject benar); login/register (non-Turnstile) 200 +
 session tersimpan.
-
-

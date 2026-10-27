@@ -274,7 +274,7 @@ export default function PartnerDashboard({
                     setSubmittingVerification(true);
                     setVerificationError("");
                     try {
-                      await submitVerification("partner@inapmu.com", ktpFile);
+                       await submitVerification(ktpFile);
                       setVerificationSent(true);
                     } catch (error) {
                       setVerificationError(error instanceof ApiRequestError ? error.code : "network_error");

@@ -43,18 +43,22 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const parts = stored.split("$");
-  if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
-  const iterations = Number(parts[1]);
-  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 10_000_000) return false;
-  const salt = fromBase64(parts[2]);
-  const expected = fromBase64(parts[3]);
-  const derived = new Uint8Array(await pbkdf2(password, salt, iterations));
-  if (derived.length !== expected.length) return false;
-  // Constant-time comparison.
-  let mismatch = 0;
-  for (let i = 0; i < derived.length; i++) mismatch |= derived[i] ^ expected[i];
-  return mismatch === 0;
+  try {
+    const parts = stored.split("$");
+    if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+    const iterations = Number(parts[1]);
+    if (!Number.isInteger(iterations) || iterations < 1 || iterations > 10_000_000) return false;
+    const salt = fromBase64(parts[2]);
+    const expected = fromBase64(parts[3]);
+    const derived = new Uint8Array(await pbkdf2(password, salt, iterations));
+    if (derived.length !== expected.length) return false;
+    // Constant-time comparison.
+    let mismatch = 0;
+    for (let i = 0; i < derived.length; i++) mismatch |= derived[i] ^ expected[i];
+    return mismatch === 0;
+  } catch {
+    return false;
+  }
 }
 
 export type SessionPayload = { userId: number; email: string; issuedAt: number };
@@ -111,7 +115,16 @@ export async function readSessionToken(
   if (!valid) return null;
   try {
     const payload = JSON.parse(new TextDecoder().decode(fromBase64(payloadB64))) as SessionPayload;
-    if (now() - payload.issuedAt > ttlSeconds * 1000) return null;
+    if (
+      !Number.isInteger(payload.userId) ||
+      payload.userId < 1 ||
+      typeof payload.email !== "string" ||
+      !Number.isFinite(payload.issuedAt) ||
+      payload.issuedAt > now() + 60_000 ||
+      now() - payload.issuedAt > ttlSeconds * 1000
+    ) {
+      return null;
+    }
     return payload;
   } catch {
     return null;

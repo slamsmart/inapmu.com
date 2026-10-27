@@ -4,7 +4,7 @@ import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import { Liquid } from "liquid-gooey";
 import "leaflet/dist/leaflet.css";
 import PartnerDashboard, { type PartnerListingInput } from "./PartnerDashboard";
-import { ApiRequestError, currentSession, loginUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication } from "./lib/api";
+import { ApiRequestError, currentSession, getCurrentUser, loginUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication, type SessionUser } from "./lib/api";
 import { useTurnstile } from "./lib/turnstile";
 
 
@@ -141,8 +141,8 @@ const copy = {
     termsPrefix: "Dengan melanjutkan, kamu menyetujui Syarat Penggunaan dan Kebijakan Privasi inapmu.com.",
     authSuccess: "Berhasil",
     authSuccessBody: "Alur autentikasi siap. Hubungkan form ini ke penyedia OAuth atau backend pilihanmu.",
-    googleReady: "Google OAuth siap dihubungkan",
-    googleReadyBody: "Tambahkan Client ID dan callback URL saat backend autentikasi sudah tersedia.",
+    googleReady: "Google berhasil terhubung",
+    googleReadyBody: "Akun Google kamu berhasil digunakan untuk masuk ke inapmu.com.",
     openDashboard: "Buka Dashboard Mitra",
     dashboardNav: "Dashboard Mitra",
     guestName: "Nama",
@@ -243,8 +243,8 @@ const copy = {
     termsPrefix: "By continuing, you agree to the inapmu.com Terms of Use and Privacy Policy.",
     authSuccess: "Success",
     authSuccessBody: "The authentication flow is ready. Connect this form to your preferred OAuth provider or backend.",
-    googleReady: "Google OAuth is ready to connect",
-    googleReadyBody: "Add your Client ID and callback URL once the authentication backend is available.",
+    googleReady: "Google connected successfully",
+    googleReadyBody: "Your Google account was used successfully to sign in to inapmu.com.",
     openDashboard: "Open Partner Dashboard",
     dashboardNav: "Partner Dashboard",
     guestName: "Name",
@@ -583,6 +583,7 @@ export default function App() {
   const [authResult, setAuthResult] = useState<"email" | "google" | null>(null);
   const [authError, setAuthError] = useState("");
   const [submittingAuth, setSubmittingAuth] = useState(false);
+  const [authenticatedUser, setAuthenticatedUser] = useState<SessionUser | null>(null);
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [partnerListings, setPartnerListings] = useState<PartnerListingInput[]>([]);
@@ -647,6 +648,44 @@ export default function App() {
     return () => observer.disconnect();
   }, [category, query, showAll]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthResult = params.get("oauth");
+
+    if (!oauthResult) {
+      void getCurrentUser().then((user) => {
+        if (user) setAuthenticatedUser(user);
+      }).catch(() => undefined);
+      return;
+    }
+
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    setAuthMode("login");
+    setAuthOpen(true);
+    document.body.style.overflow = "hidden";
+
+    if (oauthResult === "success") {
+      void getCurrentUser()
+        .then((user) => {
+          if (!user) {
+            setAuthError(language === "id" ? "Sesi Google tidak ditemukan. Silakan coba lagi." : "The Google session was not found. Please try again.");
+            return;
+          }
+          setAuthenticatedUser(user);
+          setAuthResult("google");
+        })
+        .catch(() => setAuthError(language === "id" ? "Google berhasil kembali, tetapi sesi belum dapat dibaca." : "Google returned successfully, but the session could not be read."));
+      return;
+    }
+
+    const reason = params.get("reason");
+    setAuthError(
+      reason === "access_denied"
+        ? language === "id" ? "Login Google dibatalkan." : "Google sign-in was cancelled."
+        : language === "id" ? "Login Google gagal. Silakan coba lagi." : "Google sign-in failed. Please try again.",
+    );
+  }, [language]);
+
   const openListing = (item: Listing) => {
     setSelected(item);
     setPanel(null);
@@ -689,7 +728,7 @@ export default function App() {
   const openDashboard = () => {
     setMobileMenuOpen(false);
     setPartnerOpen(false);
-    if (!currentSession()) {
+    if (!authenticatedUser && !currentSession()) {
       openAuth("login");
       return;
     }
@@ -1256,7 +1295,7 @@ export default function App() {
                   <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-stone-500">{authMode === "login" ? text.loginBody : text.registerBody}</p>
                 </div>
 
-                <button onClick={() => setAuthResult("google")} className="mt-7 flex w-full items-center justify-center gap-3 rounded-[14px] border border-stone-200 bg-white px-4 py-3.5 text-sm font-extrabold text-[#073B6F] transition hover:border-[#9AC9F8] hover:bg-[#F7FAFE]">
+                <button type="button" onClick={() => window.location.assign("/api/auth/google/start")} className="mt-7 flex w-full items-center justify-center gap-3 rounded-[14px] border border-stone-200 bg-white px-4 py-3.5 text-sm font-extrabold text-[#073B6F] transition hover:border-[#9AC9F8] hover:bg-[#F7FAFE]">
                   <span className="grid h-6 w-6 place-items-center rounded-full border border-stone-200 text-sm font-extrabold text-[#4285F4]">G</span>
                   {text.continueGoogle}
                 </button>
@@ -1288,8 +1327,9 @@ export default function App() {
                         await registerUser(email, password, name);
                         setAuthResult("email");
                       } else {
-                        const { token } = await loginUser(email, password);
+                        const { token, user } = await loginUser(email, password);
                         saveSession(token);
+                        setAuthenticatedUser(user);
                         setAuthResult("email");
                       }
                     } catch (error) {

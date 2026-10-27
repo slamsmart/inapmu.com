@@ -6,6 +6,7 @@ tmp/
 .figma/
 .cache/
 .env*
+.dev.vars
 .vite/
 vite.config.*.timestamp-*
 *.tsbuildinfo

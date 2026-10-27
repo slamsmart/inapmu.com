@@ -22,9 +22,10 @@
   ],
   "vars": {
     // Set secret via: npx wrangler secret put TURNSTILE_SECRET_KEY
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "GOOGLE_REDIRECT_URI": "https://inapmu.com/api/auth/google/callback"
   },
-  "workers_dev": true,
+  "workers_dev": false,
   "placement": { "mode": "smart" },
   "routes": [
     { "pattern": "inapmu.com/api*", "zone_name": "inapmu.com" },

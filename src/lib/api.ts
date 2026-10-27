@@ -36,6 +36,11 @@ function withTurnstile(formData: FormData): FormData {
   return formData;
 }
 
+function authorizationHeaders(): Record<string, string> {
+  const token = currentSession();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export type PartnerApplication = {
   fullName: string;
   email: string;
@@ -84,39 +89,51 @@ export async function createListing(input: ListingInput): Promise<void> {
   formData.set("website", "");
   for (const photo of input.photos) formData.append("photos", photo);
 
-  const response = await fetch("/api/listings", { method: "POST", body: formData });
+  const response = await fetch("/api/listings", { method: "POST", headers: authorizationHeaders(), body: formData });
   if (!response.ok) await parseError(response);
 }
 
-export async function submitVerification(email: string, ktp: File): Promise<void> {
+export async function submitVerification(ktp: File): Promise<void> {
   const formData = withTurnstile(new FormData());
-  formData.set("email", email);
   formData.set("ktp", ktp);
   formData.set("website", "");
 
-  const response = await fetch("/api/verifications", { method: "POST", body: formData });
+  const response = await fetch("/api/verifications", { method: "POST", headers: authorizationHeaders(), body: formData });
   if (!response.ok) await parseError(response);
 }
 
 export type SessionUser = { id: number; email: string; name: string | null };
 
 export async function registerUser(email: string, password: string, name: string): Promise<void> {
+  const cfTurnstileResponse = turnstileTokenProvider();
   const response = await fetch("/api/auth/register", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password, name }),
+    body: JSON.stringify({ email, password, name, cfTurnstileResponse }),
   });
   if (!response.ok) await parseError(response);
 }
 
 export async function loginUser(email: string, password: string): Promise<{ token: string; user: SessionUser }> {
+  const cfTurnstileResponse = turnstileTokenProvider();
   const response = await fetch("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, cfTurnstileResponse }),
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as { token: string; user: SessionUser };
+}
+
+export async function getCurrentUser(): Promise<SessionUser | null> {
+  const response = await fetch("/api/auth/me", {
+    headers: authorizationHeaders(),
+    credentials: "same-origin",
+  });
+  if (response.status === 401) return null;
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { user?: SessionUser };
+  return body.user ?? null;
 }
 
 export function saveSession(token: string): void {

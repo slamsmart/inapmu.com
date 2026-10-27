@@ -20,14 +20,14 @@ export function fingerprint(input: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-/** Extract client IP from Cloudflare headers with fallbacks. */
+/**
+ * Extract the client IP supplied by Cloudflare.
+ *
+ * Do not trust x-forwarded-for/x-real-ip here: a request sent directly to a
+ * public Worker endpoint can forge those headers and bypass per-IP limits.
+ */
 export function clientIp(request: Request): string {
-  return (
-    request.headers.get("cf-connecting-ip") ??
-    request.headers.get("x-real-ip") ??
-    request.headers.get("x-forwarded-for")?.split(",")[0].trim() ??
-    "0.0.0.0"
-  );
+  return request.headers.get("cf-connecting-ip")?.trim() || "unknown";
 }
 
 /** Validate Indonesian E.164 phone: 62 + 8-12 digits, or 08 converted upstream. */
