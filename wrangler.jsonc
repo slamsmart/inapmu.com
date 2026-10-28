@@ -23,8 +23,12 @@
   "vars": {
     // Set secret via: npx wrangler secret put TURNSTILE_SECRET_KEY
     "ENVIRONMENT": "production",
-    "GOOGLE_REDIRECT_URI": "https://inapmu.com/api/auth/google/callback"
+    "GOOGLE_REDIRECT_URI": "https://inapmu.com/api/auth/google/callback",
+    // Mayar QRIS billing. Secrets: npx wrangler secret put MAYAR_API_KEY / MAYAR_WEBHOOK_SECRET
+    "MAYAR_ENV": "production"
   },
+  // Fallback reconciliation for pending QRIS orders.
+  "triggers": { "crons": ["*/5 * * * *"] },
   "workers_dev": false,
   "placement": { "mode": "smart" },
   "routes": [

@@ -33,6 +33,19 @@ import {
   now,
   type Bindings,
 } from "./lib/util";
+import { createInvoice, findQrisPayload, MayarApiError, redactPayload, safeMayarLink, type MayarConfig } from "./lib/mayar";
+import {
+  activePlan,
+  ORDER_TTL_MS,
+  PAID_PLANS,
+  PLAN_LABEL,
+  planAmount,
+  settleOrder,
+  settlePendingOrders,
+  timingSafeEqual,
+  type OrderRow,
+  type PaidPlan,
+} from "./lib/billing";
 
 type AppBindings = Bindings & {
   TURNSTILE_SECRET_KEY?: string;
@@ -40,6 +53,11 @@ type AppBindings = Bindings & {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_REDIRECT_URI?: string;
+  MAYAR_API_KEY?: string;
+  MAYAR_ENV?: string;
+  MAYAR_WEBHOOK_SECRET?: string;
+  /** Local testing only (e.g. "1000"). Never set in production. */
+  MAYAR_TEST_AMOUNT?: string;
 };
 type AppContext = Context<{ Bindings: AppBindings }>;
 type AuthenticatedUser = { id: number; email: string; name: string | null; role: string };
@@ -142,8 +160,26 @@ function redirectResponse(location: string, cookies: string[] = []): Response {
   return new Response(null, { status: 302, headers });
 }
 
+/**
+ * Where the browser lands after Google sign-in. Uses the origin of the
+ * configured callback (inapmu.com in production, the Vite origin locally),
+ * because behind the dev proxy c.req.url points at the API worker itself.
+ */
+function appOrigin(c: AppContext): string {
+  const configured = c.env.GOOGLE_REDIRECT_URI?.trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      // fall through to the request origin
+    }
+  }
+  return new URL(c.req.url).origin;
+}
+
 function oauthResultRedirect(c: AppContext, result: "success" | "error", reason?: string, cookies: string[] = []): Response {
-  const target = new URL("/", c.req.url);
+  if (result === "error") console.warn("google oauth rejected", { reason: reason ?? "unknown" });
+  const target = new URL("/", appOrigin(c));
   target.searchParams.set("oauth", result);
   if (reason) target.searchParams.set("reason", reason);
   return redirectResponse(target.toString(), cookies);
@@ -408,18 +444,23 @@ app.get("/api/listings", async (c) => {
   const limitRaw = Number(c.req.query("limit") ?? "100");
   const limit = Number.isInteger(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? limitRaw : 100;
 
+  // `plan` is the owner's currently active plan (drives Trusted badges and the Platinum hero slider).
+  const listingColumns = `l.id, l.title, l.type, l.city, l.price, l.period, l.description, l.maps_url, l.cover_image_key, l.created_at,
+           CASE WHEN u.plan IN ('gold', 'platinum') AND u.plan_expires_at > ?1 THEN u.plan ELSE 'free' END AS plan`;
   const rows = city
     ? await c.env.DB.prepare(
-        `SELECT id, title, type, city, price, period, description, maps_url, cover_image_key, created_at
-         FROM listings WHERE status = 'approved' AND lower(city) LIKE ?1 ORDER BY created_at DESC LIMIT ?2`,
+        `SELECT ${listingColumns}
+         FROM listings l LEFT JOIN users u ON u.id = l.owner_user_id
+         WHERE l.status = 'approved' AND lower(l.city) LIKE ?2 ORDER BY l.created_at DESC LIMIT ?3`,
       )
-      .bind(`%${city.replace(/[%_]/g, (m) => `\\${m}`)}%`, limit)
+      .bind(now(), `%${city.replace(/[%_]/g, (m) => `\\${m}`)}%`, limit)
       .all()
     : await c.env.DB.prepare(
-        `SELECT id, title, type, city, price, period, description, maps_url, cover_image_key, created_at
-         FROM listings WHERE status = 'approved' ORDER BY created_at DESC LIMIT ?1`,
+        `SELECT ${listingColumns}
+         FROM listings l LEFT JOIN users u ON u.id = l.owner_user_id
+         WHERE l.status = 'approved' ORDER BY l.created_at DESC LIMIT ?2`,
       )
-      .bind(limit)
+      .bind(now(), limit)
       .all();
 
   return c.json({ listings: rows.results });
@@ -514,7 +555,12 @@ app.get("/api/auth/google/callback", async (c) => {
     });
     const tokenBody: unknown = await tokenResponse.json().catch(() => null);
     const idToken = isRecord(tokenBody) && typeof tokenBody.id_token === "string" ? tokenBody.id_token : null;
-    if (!tokenResponse.ok || !idToken) return oauthResultRedirect(c, "error", "token_exchange_failed", [clearState]);
+    if (!tokenResponse.ok || !idToken) {
+      // Google's error code only (e.g. invalid_client, redirect_uri_mismatch); never the response body.
+      const googleError = isRecord(tokenBody) && typeof tokenBody.error === "string" ? tokenBody.error.slice(0, 60) : `http_${tokenResponse.status}`;
+      console.warn("google token exchange failed", { googleError });
+      return oauthResultRedirect(c, "error", "token_exchange_failed", [clearState]);
+    }
 
     const claimsResponse = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
     const claimsBody: unknown = await claimsResponse.json().catch(() => null);
@@ -666,6 +712,200 @@ app.get("/api/auth/me", async (c) => {
   return c.json({ user }, 200);
 });
 
+// ---------------------------------------------------------------------------
+// Billing: partner plans paid with Mayar QRIS
+// ---------------------------------------------------------------------------
+
+function mayarConfig(env: AppBindings): MayarConfig | null {
+  const apiKey = env.MAYAR_API_KEY?.trim();
+  if (!apiKey) return null;
+  return { apiKey, environment: env.MAYAR_ENV === "sandbox" ? "sandbox" : "production" };
+}
+
+function publicOrder(order: OrderRow) {
+  return {
+    orderId: order.id,
+    plan: order.plan,
+    amount: order.amount,
+    status: order.status,
+    qrString: order.qr_string,
+    paymentLink: order.payment_link,
+    expiresAt: order.expires_at,
+  };
+}
+
+/** Mayar wants a local mobile number (08...). Accepts 08... or 62... input. */
+function toMayarMobile(phone: string): string | null {
+  const digits = phone.replace(/\D/g, "");
+  const e164 = digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
+  return isValidPhone(e164) ? `0${e164.slice(2)}` : null;
+}
+
+app.get("/api/billing/me", async (c) => {
+  const authenticated = await authenticate(c);
+  if (authenticated instanceof Response) return authenticated;
+  return c.json(await activePlan(c.env.DB, authenticated.id));
+});
+
+app.post("/api/billing/checkout", async (c) => {
+  if (bodyTooLarge(c.req.raw, 4_000)) return errorResponse(c, 413, { error: "payload_too_large" });
+  const authenticated = await authenticate(c);
+  if (authenticated instanceof Response) return authenticated;
+
+  const config = mayarConfig(c.env);
+  if (!config) return errorResponse(c, 503, { error: "payment_unavailable" });
+
+  const limit = await rateLimit(c.env.DB, `billing-checkout:${authenticated.id}`, 600, 6);
+  if (!limit.allowed) return c.json({ ...TOO_MANY, retryAfter: limit.retryAfterSeconds }, 429);
+
+  const body = await c.req.raw.json().catch(() => null);
+  if (!isRecord(body)) return errorResponse(c, 400, { error: "invalid_json" });
+  const plan = body.plan;
+  if (typeof plan !== "string" || !(PAID_PLANS as readonly string[]).includes(plan)) {
+    return errorResponse(c, 422, { error: "validation_failed" });
+  }
+  const paidPlan = plan as PaidPlan;
+  const amount = planAmount(paidPlan, c.env.MAYAR_TEST_AMOUNT);
+  const ts = now();
+
+  // Reuse an open order for the same plan and amount instead of creating a duplicate invoice.
+  const open = await c.env.DB.prepare(
+    `SELECT * FROM payment_orders WHERE user_id = ?1 AND plan = ?2 AND amount = ?3 AND status = 'pending' AND expires_at > ?4
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(authenticated.id, paidPlan, amount, ts + 5 * 60_000)
+    .first<OrderRow>();
+  if (open) return c.json(publicOrder(open), 200);
+
+  // Mayar requires a mobile number: take it from the request, else from the partner application.
+  let mobile = typeof body.mobile === "string" ? toMayarMobile(body.mobile) : null;
+  if (!mobile) {
+    const partner = await c.env.DB.prepare(`SELECT phone FROM partners WHERE email = ?1 ORDER BY created_at DESC LIMIT 1`)
+      .bind(authenticated.email)
+      .first<{ phone: string }>();
+    mobile = partner ? toMayarMobile(partner.phone) : null;
+  }
+  if (!mobile) return errorResponse(c, 422, { error: "phone_required" });
+
+  // Write the order before calling Mayar so every invoice maps to a row.
+  const orderId = crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO payment_orders (id, user_id, plan, amount, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 'creating', ?5, ?5)`,
+  )
+    .bind(orderId, authenticated.id, paidPlan, amount, ts)
+    .run();
+
+  const name = authenticated.name && isSafeText(authenticated.name, 120) ? authenticated.name : authenticated.email.split("@")[0];
+  try {
+    const invoice = await createInvoice(config, {
+      name,
+      email: authenticated.email,
+      mobile,
+      description: `Paket ${PLAN_LABEL[paidPlan]} inapmu.com (30 hari)`,
+      expiredAt: new Date(ts + ORDER_TTL_MS).toISOString(),
+      items: [{ quantity: 1, rate: amount, description: `Paket ${PLAN_LABEL[paidPlan]} inapmu.com - 30 hari` }],
+      paymentMethod: "qris",
+      extraData: { orderId, plan: paidPlan },
+    });
+
+    if (!invoice || typeof invoice.id !== "string" || typeof invoice.transactionId !== "string") {
+      throw new Error("invalid_invoice_response");
+    }
+    const link = safeMayarLink(invoice.link);
+    const qrString = findQrisPayload(invoice);
+    const expiresAt = Number.isFinite(invoice.expiredAt) ? Number(invoice.expiredAt) : ts + ORDER_TTL_MS;
+
+    await c.env.DB.prepare(
+      `UPDATE payment_orders SET status = 'pending', mayar_invoice_id = ?1, mayar_transaction_id = ?2, payment_link = ?3,
+         qr_string = ?4, expires_at = ?5, updated_at = ?6 WHERE id = ?7`,
+    )
+      .bind(invoice.id, invoice.transactionId, link, qrString, expiresAt, now(), orderId)
+      .run();
+
+    if (!qrString) console.warn("mayar invoice without parsable QRIS payload; falling back to hosted link", { orderId });
+    const order = await c.env.DB.prepare(`SELECT * FROM payment_orders WHERE id = ?1`).bind(orderId).first<OrderRow>();
+    return c.json(publicOrder(order!), 201);
+  } catch (error) {
+    const statusCode = error instanceof MayarApiError ? error.statusCode : 0;
+    const message = error instanceof MayarApiError ? `mayar_${statusCode}:${error.message.slice(0, 120)}` : "create_failed";
+    await c.env.DB.prepare(`UPDATE payment_orders SET status = 'failed', last_error = ?1, updated_at = ?2 WHERE id = ?3`)
+      .bind(message, now(), orderId)
+      .run();
+    console.error("mayar invoice create failed", { orderId, statusCode });
+    if (statusCode === 429) return c.json({ error: "payment_busy", retryAfter: 60 }, 429);
+    return errorResponse(c, 502, { error: "payment_unavailable" });
+  }
+});
+
+app.get("/api/billing/orders/:id", async (c) => {
+  const authenticated = await authenticate(c);
+  if (authenticated instanceof Response) return authenticated;
+
+  const orderId = c.req.param("id");
+  if (!/^[0-9a-f-]{36}$/.test(orderId)) return errorResponse(c, 404, { error: "not_found" });
+
+  const limit = await rateLimit(c.env.DB, `billing-poll:${authenticated.id}`, 60, 30);
+  if (!limit.allowed) return c.json({ ...TOO_MANY, retryAfter: limit.retryAfterSeconds }, 429);
+
+  const owned = await c.env.DB.prepare(`SELECT id FROM payment_orders WHERE id = ?1 AND user_id = ?2`)
+    .bind(orderId, authenticated.id)
+    .first();
+  if (!owned) return errorResponse(c, 404, { error: "not_found" });
+
+  const config = mayarConfig(c.env);
+  if (config) await settleOrder(c.env.DB, config, orderId);
+
+  const order = await c.env.DB.prepare(`SELECT * FROM payment_orders WHERE id = ?1`).bind(orderId).first<OrderRow>();
+  const plan = await activePlan(c.env.DB, authenticated.id);
+  return c.json({ ...publicOrder(order!), activePlan: plan });
+});
+
+/**
+ * Mayar webhook. The payload is a notification only; it never grants access.
+ * We store a redacted copy (to verify the field mapping later) and re-check
+ * matching or recent pending orders against GET /transactions/{id}.
+ */
+app.post("/api/webhooks/mayar", async (c) => {
+  const secret = c.env.MAYAR_WEBHOOK_SECRET?.trim();
+  const token = c.req.query("token") ?? "";
+  if (!secret || secret.length < 32 || !timingSafeEqual(token, secret)) {
+    return errorResponse(c, 401, { error: "unauthorized" });
+  }
+  if (bodyTooLarge(c.req.raw, 64_000)) return errorResponse(c, 413, { error: "payload_too_large" });
+
+  const payload: unknown = await c.req.raw.json().catch(() => null);
+  if (!isRecord(payload)) return c.json({ ok: true, ignored: "invalid_json" });
+
+  const event = typeof payload.event === "string" ? payload.event.slice(0, 80) : null;
+  const data = isRecord(payload.data) ? payload.data : {};
+  const candidates = [data.transactionId, data.id, data.invoiceId, data.paymentLinkId]
+    .filter((value): value is string => typeof value === "string" && value.length <= 64);
+
+  let matched: string | null = null;
+  for (const candidate of candidates) {
+    const row = await c.env.DB.prepare(
+      `SELECT id FROM payment_orders WHERE mayar_transaction_id = ?1 OR mayar_invoice_id = ?1 LIMIT 1`,
+    )
+      .bind(candidate)
+      .first<{ id: string }>();
+    if (row) {
+      matched = row.id;
+      break;
+    }
+  }
+
+  await c.env.DB.prepare(`INSERT INTO mayar_webhook_events (event, payload, matched_order_id, received_at) VALUES (?1, ?2, ?3, ?4)`)
+    .bind(event, JSON.stringify(redactPayload(payload)).slice(0, 16_000), matched, now())
+    .run();
+
+  const config = mayarConfig(c.env);
+  if (config) {
+    const work = matched ? settleOrder(c.env.DB, config, matched, true) : settlePendingOrders(c.env.DB, config, 10);
+    c.executionCtx.waitUntil(work.then(() => undefined).catch((error) => console.error("webhook settle failed", error)));
+  }
+  return c.json({ ok: true });
+});
+
 // Health check for deployment verification.
 app.get("/api/health", (c) => c.json({ ok: true }));
 
@@ -675,4 +915,12 @@ app.onError((err, c) => {
   return c.json({ error: "internal_error" }, 500);
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  // Cron fallback: settle pending orders even when no browser or webhook calls in.
+  async scheduled(_controller: ScheduledController, env: AppBindings, ctx: ExecutionContext) {
+    const config = mayarConfig(env);
+    if (!config) return;
+    ctx.waitUntil(settlePendingOrders(env.DB, config).then(() => undefined));
+  },
+} satisfies ExportedHandler<AppBindings>;

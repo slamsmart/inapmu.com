@@ -156,3 +156,47 @@ export function mediaUrl(objectKey: string | null): string | null {
   if (!objectKey) return null;
   return `/media/${objectKey}`;
 }
+
+// ---------------------------------------------------------------------------
+// Billing (Mayar QRIS). Amount and fulfillment are owned by the server.
+// ---------------------------------------------------------------------------
+
+export type PaidPlan = "gold" | "platinum";
+export type ActivePlan = { plan: "free" | PaidPlan; expiresAt: number | null };
+export type CheckoutOrder = {
+  orderId: string;
+  plan: PaidPlan;
+  amount: number;
+  status: "creating" | "pending" | "paid" | "expired" | "failed";
+  qrString: string | null;
+  paymentLink: string | null;
+  expiresAt: number | null;
+  activePlan?: ActivePlan;
+};
+
+export async function createCheckout(plan: PaidPlan, mobile?: string): Promise<CheckoutOrder> {
+  const response = await fetch("/api/billing/checkout", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authorizationHeaders() },
+    credentials: "same-origin",
+    body: JSON.stringify({ plan, mobile }),
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as CheckoutOrder;
+}
+
+export async function getCheckoutOrder(orderId: string): Promise<CheckoutOrder> {
+  const response = await fetch(`/api/billing/orders/${encodeURIComponent(orderId)}`, {
+    headers: authorizationHeaders(),
+    credentials: "same-origin",
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as CheckoutOrder;
+}
+
+export async function getActivePlan(): Promise<ActivePlan | null> {
+  const response = await fetch("/api/billing/me", { headers: authorizationHeaders(), credentials: "same-origin" });
+  if (response.status === 401) return null;
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as ActivePlan;
+}

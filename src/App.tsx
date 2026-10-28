@@ -4,7 +4,8 @@ import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import { Liquid } from "liquid-gooey";
 import "leaflet/dist/leaflet.css";
 import PartnerDashboard, { type PartnerListingInput } from "./PartnerDashboard";
-import { ApiRequestError, currentSession, getCurrentUser, loginUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication, type SessionUser } from "./lib/api";
+import CheckoutModal from "./CheckoutModal";
+import { ApiRequestError, currentSession, getActivePlan, getCurrentUser, loginUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication, type ActivePlan, type PaidPlan, type SessionUser } from "./lib/api";
 import { useTurnstile } from "./lib/turnstile";
 
 
@@ -171,7 +172,9 @@ const copy = {
     perMonth: "/bulan",
     popular: "Paling populer",
     promoLabel: "Harga promo",
-    paymentNote: "Pembayaran paket berbayar melalui QRIS (Mayar.id). Segera hadir.",
+    paymentNote: "Pembayaran paket berbayar melalui QRIS, diproses oleh Mayar.id.",
+    planActiveUntil: "Aktif sampai",
+    renewPlan: "Perpanjang 30 hari",
     plans: {
       free: { name: "Free", body: "Untuk mulai memasang properti.", cta: "Mulai gratis", features: ["Pasang listing properti", "Chat dan jadwal survei dari calon penyewa", "Tampil di pencarian dan peta"] },
       gold: { name: "Gold", body: "Supaya properti lebih dipercaya calon penyewa.", cta: "Pilih Gold", features: ["Semua fitur Free", "Badge Trusted warna emas di listing"] },
@@ -299,7 +302,9 @@ const copy = {
     perMonth: "/month",
     popular: "Most popular",
     promoLabel: "Promo price",
-    paymentNote: "Paid plans are paid via QRIS (Mayar.id). Coming soon.",
+    paymentNote: "Paid plans are paid via QRIS, processed by Mayar.id.",
+    planActiveUntil: "Active until",
+    renewPlan: "Renew 30 days",
     plans: {
       free: { name: "Free", body: "To start listing your property.", cta: "Start free", features: ["List your property", "Chats and survey requests from renters", "Shown in search and on the map"] },
       gold: { name: "Gold", body: "So renters trust your property more.", cta: "Choose Gold", features: ["Everything in Free", "Gold Trusted badge on your listing"] },
@@ -676,6 +681,9 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [submittingAuth, setSubmittingAuth] = useState(false);
   const [authenticatedUser, setAuthenticatedUser] = useState<SessionUser | null>(null);
+  const [checkoutPlan, setCheckoutPlan] = useState<PaidPlan | null>(null);
+  const [pendingCheckoutPlan, setPendingCheckoutPlan] = useState<PaidPlan | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<ActivePlan>({ plan: "free", expiresAt: null });
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
@@ -729,8 +737,9 @@ export default function App() {
       survey: true,
       coordinates: coordinatesFromLocation(item.city, item.mapsUrl),
       mapsUrl: item.mapsUrl,
+      plan: currentPlan.plan,
     })),
-  ], [language, partnerContact, partnerListings]);
+  ], [currentPlan.plan, language, partnerContact, partnerListings]);
 
   const filtered = useMemo(() => marketplaceListings.filter((item) => {
     const matchesCategory = category === "Semua" || item.type === category;
@@ -864,10 +873,40 @@ export default function App() {
     document.body.style.overflow = "";
   };
 
+  // Paid plans require an account; remember the plan and resume after login.
+  const startCheckout = (plan: PaidPlan) => {
+    setMobileMenuOpen(false);
+    if (!authenticatedUser && !currentSession()) {
+      setPendingCheckoutPlan(plan);
+      openAuth("login");
+      return;
+    }
+    setCheckoutPlan(plan);
+    document.body.style.overflow = "hidden";
+  };
+
+  const closeCheckout = () => {
+    setCheckoutPlan(null);
+    document.body.style.overflow = "";
+  };
+
+  useEffect(() => {
+    if (!authenticatedUser) return;
+    void getActivePlan().then((plan) => plan && setCurrentPlan(plan)).catch(() => undefined);
+    if (pendingCheckoutPlan) {
+      setAuthOpen(false);
+      setAuthResult(null);
+      setCheckoutPlan(pendingCheckoutPlan);
+      setPendingCheckoutPlan(null);
+      document.body.style.overflow = "hidden";
+    }
+  }, [authenticatedUser, pendingCheckoutPlan]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (dashboardOpen) closeDashboard();
+      if (checkoutPlan) closeCheckout();
+      else if (dashboardOpen) closeDashboard();
       else if (authOpen) closeAuth();
       else if (partnerOpen) closePartner();
       else if (selected) closeModal();
@@ -876,7 +915,7 @@ export default function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [authOpen, dashboardOpen, partnerOpen, selected]);
+  }, [authOpen, checkoutPlan, dashboardOpen, partnerOpen, selected]);
 
   return (
     <main className="min-h-screen overflow-hidden bg-white text-[#073B6F]">
@@ -1235,12 +1274,17 @@ export default function App() {
                       </li>
                     ))}
                   </ul>
+                  {plan !== "free" && currentPlan.plan === plan && currentPlan.expiresAt && (
+                    <p className="mt-6 rounded-[10px] bg-[#EAF4FF] px-3 py-2 text-center text-xs font-medium text-[#0064D2]">
+                      {text.planActiveUntil} {new Intl.DateTimeFormat(language === "id" ? "id-ID" : "en-GB", { dateStyle: "medium" }).format(currentPlan.expiresAt)}
+                    </p>
+                  )}
                   <button
                     type="button"
-                    onClick={partnerRegistered ? openDashboard : openPartner}
+                    onClick={plan === "free" ? (partnerRegistered ? openDashboard : openPartner) : () => startCheckout(plan)}
                     className={`mt-8 w-full rounded-[12px] px-5 py-3 text-sm font-medium transition ${highlighted ? "bg-[#0064D2] text-white hover:bg-[#0055B3]" : "border border-[#D9D8D0] text-[#073B6F] hover:bg-[#F3F7FB]"}`}
                   >
-                    {info.cta}
+                    {plan !== "free" && currentPlan.plan === plan ? text.renewPlan : info.cta}
                   </button>
                 </div>
               );
@@ -1505,6 +1549,10 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {checkoutPlan && (
+        <CheckoutModal plan={checkoutPlan} language={language} onClose={closeCheckout} onPaid={setCurrentPlan} />
       )}
 
       {authOpen && (
