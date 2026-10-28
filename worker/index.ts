@@ -705,11 +705,46 @@ app.get("/api/auth/me", async (c) => {
   const authenticated = await authenticate(c);
   if (authenticated instanceof Response) return authenticated;
 
-  const user = await c.env.DB.prepare(`SELECT id, email, name, role, created_at FROM users WHERE id = ?1`)
+  const user = await c.env.DB.prepare(`SELECT id, email, name, phone, provider, role, created_at FROM users WHERE id = ?1`)
     .bind(authenticated.id)
     .first();
   if (!user) return errorResponse(c, 401, { error: "unauthorized" });
   return c.json({ user }, 200);
+});
+
+// Account settings: display name + WhatsApp number. Email is the login identity and stays read-only.
+app.post("/api/auth/profile", async (c) => {
+  if (bodyTooLarge(c.req.raw, 4_000)) return errorResponse(c, 413, { error: "payload_too_large" });
+  const authenticated = await authenticate(c);
+  if (authenticated instanceof Response) return authenticated;
+
+  const limit = await rateLimit(c.env.DB, `auth-profile:${authenticated.id}`, 600, 20);
+  if (!limit.allowed) return c.json({ ...TOO_MANY, retryAfter: limit.retryAfterSeconds }, 429);
+
+  const body = await c.req.raw.json().catch(() => null);
+  if (!isRecord(body)) return errorResponse(c, 400, { error: "invalid_json" });
+
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const rawPhone = typeof body.phone === "string" ? body.phone.replace(/\D/g, "") : "";
+  const phone = rawPhone ? (rawPhone.startsWith("0") ? `62${rawPhone.slice(1)}` : rawPhone) : "";
+  if ((name && !isSafeText(name, 120)) || (phone && !isValidPhone(phone))) {
+    return errorResponse(c, 422, { error: "validation_failed" });
+  }
+
+  await c.env.DB.prepare(`UPDATE users SET name = ?1, phone = ?2, updated_at = ?3 WHERE id = ?4`)
+    .bind(name || null, phone || null, now(), authenticated.id)
+    .run();
+  const user = await c.env.DB.prepare(`SELECT id, email, name, phone, provider, role, created_at FROM users WHERE id = ?1`)
+    .bind(authenticated.id)
+    .first();
+  return c.json({ user }, 200);
+});
+
+// Logout clears the HttpOnly cookie (set by Google sign-in and email login).
+// Tokens are stateless, so the client also drops its stored bearer token.
+app.post("/api/auth/logout", (c) => {
+  c.header("Set-Cookie", `inapmu_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${cookieScope(c.req.raw)}`);
+  return c.json({ ok: true }, 200);
 });
 
 // ---------------------------------------------------------------------------
@@ -777,8 +812,12 @@ app.post("/api/billing/checkout", async (c) => {
     .first<OrderRow>();
   if (open) return c.json(publicOrder(open), 200);
 
-  // Mayar requires a mobile number: take it from the request, else from the partner application.
+  // Mayar requires a mobile number: request > account settings > partner application.
   let mobile = typeof body.mobile === "string" ? toMayarMobile(body.mobile) : null;
+  if (!mobile) {
+    const profile = await c.env.DB.prepare(`SELECT phone FROM users WHERE id = ?1`).bind(authenticated.id).first<{ phone: string | null }>();
+    mobile = profile?.phone ? toMayarMobile(profile.phone) : null;
+  }
   if (!mobile) {
     const partner = await c.env.DB.prepare(`SELECT phone FROM partners WHERE email = ?1 ORDER BY created_at DESC LIMIT 1`)
       .bind(authenticated.email)

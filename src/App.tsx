@@ -5,7 +5,8 @@ import { Liquid } from "liquid-gooey";
 import "leaflet/dist/leaflet.css";
 import PartnerDashboard, { type PartnerListingInput } from "./PartnerDashboard";
 import CheckoutModal from "./CheckoutModal";
-import { ApiRequestError, currentSession, getActivePlan, getCurrentUser, loginUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication, type ActivePlan, type PaidPlan, type SessionUser } from "./lib/api";
+import AccountModal, { UserAvatar } from "./AccountModal";
+import { ApiRequestError, currentSession, displayName, getActivePlan, getCurrentUser, loginUser, logoutUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication, type ActivePlan, type PaidPlan, type SessionUser } from "./lib/api";
 import { useTurnstile } from "./lib/turnstile";
 
 
@@ -150,7 +151,7 @@ const copy = {
     registerAction: "Buat akun",
     termsPrefix: "Dengan melanjutkan, kamu menyetujui Syarat Penggunaan dan Kebijakan Privasi inapmu.com.",
     authSuccess: "Berhasil",
-    authSuccessBody: "Alur autentikasi siap. Hubungkan form ini ke penyedia OAuth atau backend pilihanmu.",
+    authSuccessBody: "Kamu sudah masuk ke inapmu.com. Atur nama dan nomor WhatsApp di Pengaturan akun.",
     googleReady: "Google berhasil terhubung",
     googleReadyBody: "Akun Google kamu berhasil digunakan untuk masuk ke inapmu.com.",
     openDashboard: "Buka Dashboard Mitra",
@@ -175,6 +176,8 @@ const copy = {
     paymentNote: "Pembayaran paket berbayar melalui QRIS, diproses oleh Mayar.id.",
     planActiveUntil: "Aktif sampai",
     renewPlan: "Perpanjang 30 hari",
+    accountSettings: "Pengaturan akun",
+    logout: "Keluar",
     plans: {
       free: { name: "Free", body: "Untuk mulai memasang properti.", cta: "Mulai gratis", features: ["Pasang listing properti", "Chat dan jadwal survei dari calon penyewa", "Tampil di pencarian dan peta"] },
       gold: { name: "Gold", body: "Supaya properti lebih dipercaya calon penyewa.", cta: "Pilih Gold", features: ["Semua fitur Free", "Badge Trusted warna emas di listing"] },
@@ -280,7 +283,7 @@ const copy = {
     registerAction: "Create account",
     termsPrefix: "By continuing, you agree to the inapmu.com Terms of Use and Privacy Policy.",
     authSuccess: "Success",
-    authSuccessBody: "The authentication flow is ready. Connect this form to your preferred OAuth provider or backend.",
+    authSuccessBody: "You are signed in to inapmu.com. Set your name and WhatsApp number in Account settings.",
     googleReady: "Google connected successfully",
     googleReadyBody: "Your Google account was used successfully to sign in to inapmu.com.",
     openDashboard: "Open Partner Dashboard",
@@ -305,6 +308,8 @@ const copy = {
     paymentNote: "Paid plans are paid via QRIS, processed by Mayar.id.",
     planActiveUntil: "Active until",
     renewPlan: "Renew 30 days",
+    accountSettings: "Account settings",
+    logout: "Log out",
     plans: {
       free: { name: "Free", body: "To start listing your property.", cta: "Start free", features: ["List your property", "Chats and survey requests from renters", "Shown in search and on the map"] },
       gold: { name: "Gold", body: "So renters trust your property more.", cta: "Choose Gold", features: ["Everything in Free", "Gold Trusted badge on your listing"] },
@@ -682,6 +687,8 @@ export default function App() {
   const [submittingAuth, setSubmittingAuth] = useState(false);
   const [authenticatedUser, setAuthenticatedUser] = useState<SessionUser | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<PaidPlan | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [pendingCheckoutPlan, setPendingCheckoutPlan] = useState<PaidPlan | null>(null);
   const [currentPlan, setCurrentPlan] = useState<ActivePlan>({ plan: "free", expiresAt: null });
   const [dashboardOpen, setDashboardOpen] = useState(false);
@@ -890,6 +897,29 @@ export default function App() {
     document.body.style.overflow = "";
   };
 
+  const openAccount = () => {
+    setUserMenuOpen(false);
+    setMobileMenuOpen(false);
+    setAccountOpen(true);
+    document.body.style.overflow = "hidden";
+  };
+
+  const closeAccount = () => {
+    setAccountOpen(false);
+    document.body.style.overflow = "";
+  };
+
+  const logout = async () => {
+    setUserMenuOpen(false);
+    setMobileMenuOpen(false);
+    setAccountOpen(false);
+    setDashboardOpen(false);
+    document.body.style.overflow = "";
+    await logoutUser();
+    setAuthenticatedUser(null);
+    setCurrentPlan({ plan: "free", expiresAt: null });
+  };
+
   useEffect(() => {
     if (!authenticatedUser) return;
     void getActivePlan().then((plan) => plan && setCurrentPlan(plan)).catch(() => undefined);
@@ -906,6 +936,8 @@ export default function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (checkoutPlan) closeCheckout();
+      else if (accountOpen) closeAccount();
+      else if (userMenuOpen) setUserMenuOpen(false);
       else if (dashboardOpen) closeDashboard();
       else if (authOpen) closeAuth();
       else if (partnerOpen) closePartner();
@@ -915,7 +947,17 @@ export default function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [authOpen, checkoutPlan, dashboardOpen, partnerOpen, selected]);
+  }, [accountOpen, authOpen, checkoutPlan, dashboardOpen, partnerOpen, selected, userMenuOpen]);
+
+  // Close the account dropdown on any outside click.
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!(event.target as HTMLElement).closest("[aria-haspopup='menu'], [role='menu']")) setUserMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [userMenuOpen]);
 
   return (
     <main className="min-h-screen overflow-hidden bg-white text-[#073B6F]">
@@ -947,8 +989,38 @@ export default function App() {
             <span className="text-stone-300">|</span>
             <button onClick={() => setLanguage("en")} className={`rounded-full px-2.5 py-1.5 transition ${language === "en" ? "bg-[#0064D2] text-white" : "text-stone-400 hover:text-[#0064D2]"}`}>ENG</button>
           </div>
-          <button onClick={() => openAuth("login")} className="hidden rounded-[10px] px-4 py-2.5 text-sm font-normal transition hover:bg-[#F3F7FB] lg:block">{text.login}</button>
-          <button onClick={() => openAuth("register")} className="hidden rounded-[10px] bg-[#0064D2] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#0055B3] lg:block">{text.register}</button>
+          {authenticatedUser ? (
+            <div className="relative hidden lg:block">
+              <button
+                onClick={() => setUserMenuOpen((open) => !open)}
+                className="flex items-center gap-2.5 rounded-full border border-[#D9D8D0] bg-white py-1 pl-1 pr-3.5 text-sm transition hover:border-[#0064D2]"
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+              >
+                <UserAvatar user={authenticatedUser} size={32} />
+                <span className="max-w-[140px] truncate font-medium text-[#073B6F]">{displayName(authenticatedUser)}</span>
+                {currentPlan.plan !== "free" && <TrustedBadge plan={currentPlan.plan} label={currentPlan.plan === "gold" ? "Gold" : "Platinum"} />}
+                <Icon name="chevron" size={14} />
+              </button>
+              {userMenuOpen && (
+                <div role="menu" className="absolute right-0 top-[calc(100%+8px)] z-30 w-64 rounded-[18px] border border-[#DFEAF5] bg-white p-2 shadow-[0_22px_60px_rgba(0,74,155,.18)]">
+                  <div className="border-b border-[#EEF2F6] px-3 pb-3 pt-2">
+                    <p className="truncate font-medium text-[#111827]">{displayName(authenticatedUser)}</p>
+                    <p className="truncate text-xs text-stone-500">{authenticatedUser.email}</p>
+                  </div>
+                  <button role="menuitem" onClick={openAccount} className="mt-1 flex w-full items-center gap-2.5 rounded-[12px] px-3 py-2.5 text-left text-sm text-[#073B6F] transition hover:bg-[#F3F7FB]"><Icon name="user" size={17} /> {text.accountSettings}</button>
+                  <button role="menuitem" onClick={() => { setUserMenuOpen(false); openDashboard(); }} className="flex w-full items-center gap-2.5 rounded-[12px] px-3 py-2.5 text-left text-sm text-[#073B6F] transition hover:bg-[#F3F7FB]"><Icon name="home" size={17} /> {text.dashboardNav}</button>
+                  <a role="menuitem" href="#harga" onClick={() => setUserMenuOpen(false)} className="flex w-full items-center gap-2.5 rounded-[12px] px-3 py-2.5 text-left text-sm text-[#073B6F] transition hover:bg-[#F3F7FB]"><Icon name="sparkles" size={17} /> {text.pricingNav}</a>
+                  <button role="menuitem" onClick={logout} className="mt-1 flex w-full items-center gap-2.5 rounded-[12px] border-t border-[#EEF2F6] px-3 py-2.5 text-left text-sm text-red-600 transition hover:bg-[#F3F7FB]"><Icon name="arrow" size={17} /> {text.logout}</button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <button onClick={() => openAuth("login")} className="hidden rounded-[10px] px-4 py-2.5 text-sm font-normal transition hover:bg-[#F3F7FB] lg:block">{text.login}</button>
+              <button onClick={() => openAuth("register")} className="hidden rounded-[10px] bg-[#0064D2] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#0055B3] lg:block">{text.register}</button>
+            </>
+          )}
           <button
             onClick={() => setMobileMenuOpen((open) => !open)}
             className="grid h-10 w-10 place-items-center rounded-full border border-[#D9D8D0] transition hover:border-[#0064D2] hover:text-[#0064D2] lg:hidden"
@@ -968,10 +1040,23 @@ export default function App() {
               <a href="#tentang" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.aboutNav}</a>
               <button onClick={partnerRegistered ? openDashboard : openPartner} className="rounded-[14px] px-4 py-3 text-left text-[#073B6F] transition hover:bg-[#F3F7FB]">{partnerRegistered ? text.dashboardNav : text.becomeOwner}</button>
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2 border-t border-[#EEF2F6] pt-3">
-              <button onClick={() => openAuth("login")} className="rounded-[13px] border border-[#D9D8D0] px-3 py-3 text-sm font-medium text-[#073B6F]">{text.login}</button>
-              <button onClick={() => openAuth("register")} className="rounded-[13px] bg-[#0064D2] px-3 py-3 text-sm font-medium text-white">{text.register}</button>
-            </div>
+            {authenticatedUser ? (
+              <div className="mt-2 border-t border-[#EEF2F6] pt-3">
+                <button onClick={openAccount} className="flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition hover:bg-[#F3F7FB]">
+                  <UserAvatar user={authenticatedUser} size={36} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-[#073B6F]">{displayName(authenticatedUser)}</span>
+                    <span className="block truncate text-xs text-stone-500">{text.accountSettings}</span>
+                  </span>
+                </button>
+                <button onClick={logout} className="mt-1 w-full rounded-[13px] border border-[#D9D8D0] px-3 py-3 text-sm font-medium text-red-600">{text.logout}</button>
+              </div>
+            ) : (
+              <div className="mt-2 grid grid-cols-2 gap-2 border-t border-[#EEF2F6] pt-3">
+                <button onClick={() => openAuth("login")} className="rounded-[13px] border border-[#D9D8D0] px-3 py-3 text-sm font-medium text-[#073B6F]">{text.login}</button>
+                <button onClick={() => openAuth("register")} className="rounded-[13px] bg-[#0064D2] px-3 py-3 text-sm font-medium text-white">{text.register}</button>
+              </div>
+            )}
           </div>
         )}
       </nav>
@@ -1549,6 +1634,21 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {accountOpen && authenticatedUser && (
+        <AccountModal
+          user={authenticatedUser}
+          plan={currentPlan}
+          language={language}
+          onClose={closeAccount}
+          onSaved={setAuthenticatedUser}
+          onLogout={logout}
+          onSeePlans={() => {
+            closeAccount();
+            document.getElementById("harga")?.scrollIntoView({ behavior: "smooth" });
+          }}
+        />
       )}
 
       {checkoutPlan && (

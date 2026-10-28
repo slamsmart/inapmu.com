@@ -102,7 +102,39 @@ export async function submitVerification(ktp: File): Promise<void> {
   if (!response.ok) await parseError(response);
 }
 
-export type SessionUser = { id: number; email: string; name: string | null };
+export type SessionUser = {
+  id: number;
+  email: string;
+  name: string | null;
+  phone?: string | null;
+  provider?: string | null;
+  created_at?: number;
+};
+
+/** Display name: profile name, else the part of the email before "@". */
+export function displayName(user: Pick<SessionUser, "email" | "name">): string {
+  return user.name?.trim() || user.email.split("@")[0];
+}
+
+export async function updateProfile(input: { name: string; phone: string }): Promise<SessionUser> {
+  const response = await fetch("/api/auth/profile", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authorizationHeaders() },
+    credentials: "same-origin",
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) await parseError(response);
+  return ((await response.json()) as { user: SessionUser }).user;
+}
+
+export async function logoutUser(): Promise<void> {
+  try {
+    sessionStorage.removeItem("inapmu.session");
+  } catch {
+    // storage unavailable
+  }
+  await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
+}
 
 export async function registerUser(email: string, password: string, name: string): Promise<void> {
   const cfTurnstileResponse = turnstileTokenProvider();
