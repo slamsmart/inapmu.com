@@ -5,6 +5,7 @@ import { Liquid } from "liquid-gooey";
 import "leaflet/dist/leaflet.css";
 import PartnerDashboard, { type PartnerListingInput } from "./PartnerDashboard";
 import CheckoutModal from "./CheckoutModal";
+import ChatWidget from "./ChatWidget";
 import AccountModal, { UserAvatar } from "./AccountModal";
 import { ApiRequestError, currentSession, displayName, getActivePlan, getCurrentUser, loginUser, logoutUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication, type ActivePlan, type PaidPlan, type SessionUser } from "./lib/api";
 import { useTurnstile } from "./lib/turnstile";
@@ -177,6 +178,7 @@ const copy = {
     planActiveUntil: "Aktif sampai",
     renewPlan: "Perpanjang 30 hari",
     accountSettings: "Pengaturan akun",
+    partnerOnlyNotice: "Paket Gold dan Platinum khusus untuk mitra pemilik properti. Daftarkan dirimu sebagai mitra dulu, lalu pilih paket.",
     logout: "Keluar",
     plans: {
       free: { name: "Free", body: "Untuk mulai memasang properti.", cta: "Mulai gratis", features: ["Pasang listing properti", "Chat dan jadwal survei dari calon penyewa", "Tampil di pencarian dan peta"] },
@@ -309,6 +311,7 @@ const copy = {
     planActiveUntil: "Active until",
     renewPlan: "Renew 30 days",
     accountSettings: "Account settings",
+    partnerOnlyNotice: "Gold and Platinum plans are for property-owner partners only. Register as a partner first, then choose a plan.",
     logout: "Log out",
     plans: {
       free: { name: "Free", body: "To start listing your property.", cta: "Start free", features: ["List your property", "Chats and survey requests from renters", "Shown in search and on the map"] },
@@ -688,6 +691,7 @@ export default function App() {
   const [authenticatedUser, setAuthenticatedUser] = useState<SessionUser | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<PaidPlan | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [partnerOnlyNotice, setPartnerOnlyNotice] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [pendingCheckoutPlan, setPendingCheckoutPlan] = useState<PaidPlan | null>(null);
   const [currentPlan, setCurrentPlan] = useState<ActivePlan>({ plan: "free", expiresAt: null });
@@ -846,6 +850,7 @@ export default function App() {
   };
 
   const closePartner = () => {
+    setPartnerOnlyNotice(false);
     setPartnerOpen(false);
     document.body.style.overflow = "";
   };
@@ -888,6 +893,12 @@ export default function App() {
       openAuth("login");
       return;
     }
+    if (!currentPlan.isPartner && !partnerRegistered) {
+      // Paid plans are for partners only: register as a partner first.
+      setPartnerOnlyNotice(true);
+      openPartner();
+      return;
+    }
     setCheckoutPlan(plan);
     document.body.style.overflow = "hidden";
   };
@@ -922,14 +933,30 @@ export default function App() {
 
   useEffect(() => {
     if (!authenticatedUser) return;
-    void getActivePlan().then((plan) => plan && setCurrentPlan(plan)).catch(() => undefined);
-    if (pendingCheckoutPlan) {
-      setAuthOpen(false);
-      setAuthResult(null);
-      setCheckoutPlan(pendingCheckoutPlan);
-      setPendingCheckoutPlan(null);
-      document.body.style.overflow = "hidden";
-    }
+    let cancelled = false;
+    void getActivePlan()
+      .then((plan) => {
+        if (cancelled || !plan) return;
+        setCurrentPlan(plan);
+        if (pendingCheckoutPlan) {
+          setAuthOpen(false);
+          setAuthResult(null);
+          setPendingCheckoutPlan(null);
+          if (plan.isPartner) {
+            setCheckoutPlan(pendingCheckoutPlan);
+            document.body.style.overflow = "hidden";
+          } else {
+            setPartnerOnlyNotice(true);
+            setPartnerOpen(true);
+            setPartnerSubmitted(false);
+            document.body.style.overflow = "hidden";
+          }
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [authenticatedUser, pendingCheckoutPlan]);
 
   useEffect(() => {
@@ -972,7 +999,13 @@ export default function App() {
           <a href="#cara-kerja" className="transition hover:text-[#0064D2]">{text.howItWorks}</a>
           <a href="#harga" className="transition hover:text-[#0064D2]">{text.pricingNav}</a>
           <a href="#tentang" className="transition hover:text-[#0064D2]">{text.aboutNav}</a>
-          <button onClick={partnerRegistered ? openDashboard : openPartner} className="transition hover:text-[#0064D2]">{partnerRegistered ? text.dashboardNav : text.becomeOwner}</button>
+          {partnerRegistered ? (
+            <button onClick={openDashboard} className="transition hover:text-[#0064D2]">{text.dashboardNav}</button>
+          ) : (
+            <button onClick={openPartner} className="flex items-center gap-1.5 rounded-[10px] bg-[#FFB700] px-3.5 py-2 font-bold text-[#073B6F] shadow-[0_6px_18px_rgba(255,183,0,.45)] ring-2 ring-[#FFB700]/30 transition hover:-translate-y-0.5 hover:bg-[#FFC633] focus-visible:outline-none focus-visible:ring-[#0064D2]">
+              <Icon name="sparkles" size={16} /> {text.becomeOwner}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -1038,7 +1071,13 @@ export default function App() {
               <a href="#cara-kerja" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.howItWorks}</a>
               <a href="#harga" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.pricingNav}</a>
               <a href="#tentang" onClick={() => setMobileMenuOpen(false)} className="rounded-[14px] px-4 py-3 text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.aboutNav}</a>
-              <button onClick={partnerRegistered ? openDashboard : openPartner} className="rounded-[14px] px-4 py-3 text-left text-[#073B6F] transition hover:bg-[#F3F7FB]">{partnerRegistered ? text.dashboardNav : text.becomeOwner}</button>
+              {partnerRegistered ? (
+                <button onClick={openDashboard} className="rounded-[14px] px-4 py-3 text-left text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.dashboardNav}</button>
+              ) : (
+                <button onClick={() => { setMobileMenuOpen(false); openPartner(); }} className="mt-1 flex items-center gap-2 rounded-[14px] bg-[#FFB700] px-4 py-3 text-left font-bold text-[#073B6F] shadow-[0_6px_18px_rgba(255,183,0,.4)] transition hover:bg-[#FFC633]">
+                  <Icon name="sparkles" size={17} /> {text.becomeOwner}
+                </button>
+              )}
             </div>
             {authenticatedUser ? (
               <div className="mt-2 border-t border-[#EEF2F6] pt-3">
@@ -1562,6 +1601,8 @@ export default function App() {
                           setPartnerContact({ name: String(data.get("fullName")), email: String(data.get("email")), phone });
                           setPartnerRegistered(true);
                           setPartnerSubmitted(true);
+                          setPartnerOnlyNotice(false);
+                          if (authenticatedUser) void getActivePlan().then((plan) => plan && setCurrentPlan(plan)).catch(() => undefined);
                         } catch (error) {
                           setPartnerError(error instanceof ApiRequestError ? error.code : "network_error");
                         } finally {
@@ -1571,6 +1612,12 @@ export default function App() {
                     >
                       {/* Honeypot: hidden from humans, bots fill it */}
                       <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
+                      {partnerOnlyNotice && (
+                        <p className="flex items-start gap-3 rounded-[14px] bg-[#EAF4FF] p-4 text-sm leading-6 text-[#285E91]">
+                          <span className="mt-0.5 text-[#0064D2]"><Icon name="shield" size={18} /></span>
+                          {text.partnerOnlyNotice}
+                        </p>
+                      )}
                       <div ref={partnerTurnstileRef} className="flex justify-center" />
                       <fieldset>
                         <legend className="mb-4 flex items-center gap-2 text-lg font-medium tracking-[-0.02em] text-[#111827]">
@@ -1650,6 +1697,8 @@ export default function App() {
           }}
         />
       )}
+
+      <ChatWidget language={language} />
 
       {checkoutPlan && (
         <CheckoutModal plan={checkoutPlan} language={language} onClose={closeCheckout} onPaid={setCurrentPlan} />

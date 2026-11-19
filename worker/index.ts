@@ -36,6 +36,7 @@ import {
 import { createInvoice, findQrisPayload, MayarApiError, redactPayload, safeMayarLink, type MayarConfig } from "./lib/mayar";
 import {
   activePlan,
+  isPartner,
   ORDER_TTL_MS,
   PAID_PLANS,
   PLAN_LABEL,
@@ -58,6 +59,10 @@ type AppBindings = Bindings & {
   MAYAR_WEBHOOK_SECRET?: string;
   /** Local testing only (e.g. "1000"). Never set in production. */
   MAYAR_TEST_AMOUNT?: string;
+  /** Chatbot: any OpenAI-compatible endpoint (e.g. hivev.ai). Key via `wrangler secret put CHAT_API_KEY`. */
+  CHAT_BASE_URL?: string;
+  CHAT_API_KEY?: string;
+  CHAT_MODEL?: string;
 };
 type AppContext = Context<{ Bindings: AppBindings }>;
 type AuthenticatedUser = { id: number; email: string; name: string | null; role: string };
@@ -273,11 +278,15 @@ app.post("/api/partners/apply", async (c) => {
     .first<{ id: number }>();
   if (recent) return c.json({ ok: true, duplicate: true }, 200);
 
+  // Optional: link the application to the signed-in account (public form also works logged out).
+  const signedIn = c.req.header("Authorization") || cookieValue(c.req.raw, "inapmu_session") ? await authenticate(c) : null;
+  const userId = signedIn && !(signedIn instanceof Response) ? signedIn.id : null;
+
   const result = await c.env.DB.prepare(
-    `INSERT INTO partners (full_name, email, phone, property_name, city, property_type, ip_hash, created_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+    `INSERT INTO partners (full_name, email, phone, property_name, city, property_type, ip_hash, created_at, user_id)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
   )
-    .bind(input.fullName, input.email, input.phone, input.propertyName, input.city, input.propertyType, ipHash, now())
+    .bind(input.fullName, input.email, input.phone, input.propertyName, input.city, input.propertyType, ipHash, now(), userId)
     .run();
 
   return c.json({ ok: true, id: result.meta.last_row_id }, 201);
@@ -779,13 +788,17 @@ function toMayarMobile(phone: string): string | null {
 app.get("/api/billing/me", async (c) => {
   const authenticated = await authenticate(c);
   if (authenticated instanceof Response) return authenticated;
-  return c.json(await activePlan(c.env.DB, authenticated.id));
+  const [plan, partner] = await Promise.all([activePlan(c.env.DB, authenticated.id), isPartner(c.env.DB, authenticated)]);
+  return c.json({ ...plan, isPartner: partner });
 });
 
 app.post("/api/billing/checkout", async (c) => {
   if (bodyTooLarge(c.req.raw, 4_000)) return errorResponse(c, 413, { error: "payload_too_large" });
   const authenticated = await authenticate(c);
   if (authenticated instanceof Response) return authenticated;
+
+  // Paid plans are sold to partners only, never to regular renters.
+  if (!(await isPartner(c.env.DB, authenticated))) return errorResponse(c, 403, { error: "partner_required" });
 
   const config = mayarConfig(c.env);
   if (!config) return errorResponse(c, 503, { error: "payment_unavailable" });
@@ -943,6 +956,57 @@ app.post("/api/webhooks/mayar", async (c) => {
     c.executionCtx.waitUntil(work.then(() => undefined).catch((error) => console.error("webhook settle failed", error)));
   }
   return c.json({ ok: true });
+});
+
+const CHAT_SYSTEM_PROMPT =
+  "Kamu adalah asisten virtual inapmu.com, platform pencarian dan sewa kos/properti di Indonesia. " +
+  "Jawab singkat, ramah, dan sesuai bahasa pengguna. Bantu soal pencarian kos, harga, paket langganan, dan pendaftaran mitra. " +
+  "Jangan mengarang data listing atau harga; jika tidak tahu, arahkan pengguna ke menu di situs.";
+
+app.post("/api/chat", async (c) => {
+  const baseUrl = c.env.CHAT_BASE_URL?.trim().replace(/\/+$/, "");
+  const apiKey = c.env.CHAT_API_KEY?.trim();
+  if (!baseUrl || !apiKey || !baseUrl.startsWith("https://")) return errorResponse(c, 503, { error: "chat_unavailable" });
+  if (bodyTooLarge(c.req.raw, 16_000)) return errorResponse(c, 413, { error: "payload_too_large" });
+
+  const limit = await rateLimit(c.env.DB, `chat:${fingerprint(clientIp(c.req.raw))}`, 300, 20);
+  if (!limit.allowed) return c.json({ error: "rate_limited", retryAfter: limit.retryAfterSeconds }, 429);
+
+  const body = await c.req.raw.json().catch(() => null);
+  const raw = body && typeof body === "object" && Array.isArray(body.messages) ? body.messages : null;
+  if (!raw || raw.length === 0) return errorResponse(c, 400, { error: "invalid_json" });
+
+  const messages: { role: "user" | "assistant"; content: string }[] = [];
+  for (const m of raw.slice(-12)) {
+    if (!m || typeof m !== "object" || (m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string") {
+      return errorResponse(c, 422, { error: "validation_failed" });
+    }
+    const content = m.content.trim().slice(0, 1000);
+    if (content) messages.push({ role: m.role, content });
+  }
+  if (messages.length === 0 || messages[messages.length - 1].role !== "user") {
+    return errorResponse(c, 422, { error: "validation_failed" });
+  }
+
+  const upstream = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: c.env.CHAT_MODEL?.trim() || "default",
+      max_tokens: 1500, // reasoning models spend part of this budget on hidden thinking
+      reasoning_effort: "low",
+      messages: [{ role: "system", content: CHAT_SYSTEM_PROMPT }, ...messages],
+    }),
+    signal: AbortSignal.timeout(25_000),
+  }).catch(() => null);
+  if (!upstream || !upstream.ok) {
+    console.error("chat upstream failed", upstream?.status);
+    return errorResponse(c, 502, { error: "chat_upstream_failed" });
+  }
+  const data = (await upstream.json().catch(() => null)) as { choices?: { message?: { content?: unknown } }[] } | null;
+  const reply = data?.choices?.[0]?.message?.content;
+  if (typeof reply !== "string" || !reply.trim()) return errorResponse(c, 502, { error: "chat_upstream_failed" });
+  return c.json({ reply: reply.trim() });
 });
 
 // Health check for deployment verification.

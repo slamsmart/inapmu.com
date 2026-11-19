@@ -103,6 +103,50 @@ npm run dev                          # terminal 2 → http://localhost:8443
 npx wrangler d1 execute inapmu-db --remote --command "SELECT * FROM partners ORDER BY id DESC LIMIT 10"
 ```
 
+## Linear — review/audit → issue
+
+Tooling developer: `scripts/linear.ts` (CLI) + `scripts/lib/linear.ts` (klien GraphQL).
+Bukan bagian dari Worker — key dibaca dari `.env.local` (`LINEAR_API_KEY`) dan tidak
+pernah ter-bundle ke browser maupun Cloudflare.
+
+```bash
+npm run linear -- whoami                        # cek key + pemiliknya
+npm run linear -- teams                         # daftar team + label
+npm run linear -- list --limit 20               # issue aktif terbaru
+npm run linear -- bug --title "..." --severity high --file src/App.tsx --line 754
+npm run linear -- review tmp/findings.json      # bulk dari hasil audit
+npm run linear -- archive SMA-12
+```
+
+- Severity → priority Linear: `critical`/`urgent`=1, `high`=2, `medium`=3, `low`=4.
+- Label default: `bug` → `Bug`, `review` → `Audit` (dibuat otomatis kalau belum ada).
+  Tambahan lewat `--label A,B` digabung, duplikat dibuang.
+- **Dedupe**: setiap issue menyimpan baris `audit-fingerprint: <hash>` di deskripsi.
+  Re-run dari findings yang sama menghasilkan `skip`, bukan issue baru; `--force`
+  memaksa pembuatan ulang.
+- `--dry-run` mencetak rencana tanpa memanggil `issueCreate`.
+- `LINEAR_TEAM_KEY` (opsional) = team default; kalau kosong dan workspace hanya
+  punya satu team, team itu yang dipakai.
+
+Format findings — array, atau objek `{ "findings": [...] }`:
+
+```json
+[
+  {
+    "title": "Rate limit login hanya per-IP, belum per-akun",
+    "description": "Analisis / langkah reproduksi...",
+    "severity": "high",
+    "file": "worker/index.ts",
+    "line": 420,
+    "labels": ["Bug"],
+    "fingerprint": "opsional-id-stabil"
+  }
+]
+```
+
+`fingerprint` eksplisit dipakai kalau judul temuan mudah berubah (mis. memuat angka
+atau jumlah). Tanpa itu, fingerprint dihitung dari judul + file + baris.
+
 ## Koneksi domain inapmu.com (status 2026-10-18)
 
 ### Sudah terpasang

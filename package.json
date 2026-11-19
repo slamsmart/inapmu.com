@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "typecheck": "tsc --noEmit",
+    "linear": "node scripts/linear.ts",
+    "linear:review": "node scripts/linear.ts review"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

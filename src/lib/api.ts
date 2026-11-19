@@ -60,7 +60,12 @@ export async function submitPartnerApplication(input: PartnerApplication): Promi
   formData.set("propertyType", input.propertyType);
   formData.set("website", ""); // honeypot: real clients leave empty
 
-  const response = await fetch("/api/partners/apply", { method: "POST", body: formData });
+  const response = await fetch("/api/partners/apply", {
+    method: "POST",
+    headers: authorizationHeaders(),
+    credentials: "same-origin",
+    body: formData,
+  });
   if (!response.ok) await parseError(response);
 }
 
@@ -194,7 +199,7 @@ export function mediaUrl(objectKey: string | null): string | null {
 // ---------------------------------------------------------------------------
 
 export type PaidPlan = "gold" | "platinum";
-export type ActivePlan = { plan: "free" | PaidPlan; expiresAt: number | null };
+export type ActivePlan = { plan: "free" | PaidPlan; expiresAt: number | null; isPartner?: boolean };
 export type CheckoutOrder = {
   orderId: string;
   plan: PaidPlan;

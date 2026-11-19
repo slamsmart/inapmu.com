@@ -169,6 +169,25 @@ export async function activePlan(db: D1Database, userId: number): Promise<Active
   return { plan: "free", expiresAt: null };
 }
 
+/**
+ * Paid plans are for partners only. A user is a partner when they submitted
+ * the partner application (linked account or same email), own a listing, or
+ * already hold an active paid plan (existing subscribers keep renewing).
+ */
+export async function isPartner(db: D1Database, user: { id: number; email: string }): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT
+         EXISTS (SELECT 1 FROM partners WHERE user_id = ?1 OR lower(email) = lower(?2)) OR
+         EXISTS (SELECT 1 FROM listings WHERE owner_user_id = ?1) OR
+         EXISTS (SELECT 1 FROM users WHERE id = ?1 AND plan IN ('gold', 'platinum') AND plan_expires_at > ?3)
+       AS partner`,
+    )
+    .bind(user.id, user.email, now())
+    .first<{ partner: number }>();
+  return row?.partner === 1;
+}
+
 /** Constant-time string comparison for the webhook token. */
 export function timingSafeEqual(a: string, b: string): boolean {
   const encoder = new TextEncoder();
