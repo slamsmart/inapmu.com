@@ -25,7 +25,10 @@
     "ENVIRONMENT": "production",
     "GOOGLE_REDIRECT_URI": "https://inapmu.com/api/auth/google/callback",
     // Mayar QRIS billing. Secrets: npx wrangler secret put MAYAR_API_KEY / MAYAR_WEBHOOK_SECRET
-    "MAYAR_ENV": "production"
+    "MAYAR_ENV": "production",
+    // Chatbot (TheHive, OpenAI-compatible). Secret: npx wrangler secret put CHAT_API_KEY
+    "CHAT_BASE_URL": "https://api-cdn.thehive.ai/api/v3",
+    "CHAT_MODEL": "zai-org/glm-5.3-flash"
   },
   // Fallback reconciliation for pending QRIS orders.
   "triggers": { "crons": ["*/5 * * * *"] },
