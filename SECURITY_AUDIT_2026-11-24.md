@@ -22,10 +22,10 @@ already tracked as open items in the existing `SECURITY_REVIEW.md` and remain op
 |---|---|---|---|
 | M1 | Medium | Session token storage & revocation | **Fixed 2026-11-24** |
 | L1 | Low | Chat markdown link rendering (self-XSS only) | **Fixed 2026-11-24** |
-| L2 | Low | Body-size gate skipped without `Content-Length` | New |
+| L2 | Low | Body-size gate skipped without `Content-Length` | **Fixed 2026-11-24** |
 | L3 | Low | Demo owner PII hardcoded in client bundle | Open (tracked before, still open) |
-| I1 | Info | No-op `LIKE` escaping (missing `ESCAPE`) | New |
-| I2 | Info | Nearby-places fetch blocked by own CSP in prod | New (functional bug) |
+| I1 | Info | No-op `LIKE` escaping (missing `ESCAPE`) | **Not applicable** — see remediation log |
+| I2 | Info | Nearby-places fetch blocked by own CSP in prod | **Not applicable** — see remediation log |
 | I3 | Info | Webhook secret passed as query string | New (accepted pattern, noted) |
 | I4 | Info | Local `.dev.vars` holds a live-looking key | New (not leaked to git) |
 | I5 | Info | No session revocation on logout | Open (tracked before, still open) |
@@ -197,15 +197,35 @@ M1's fix (a `token_version` column) for the smallest change that also closes thi
 - **2026-11-24 — L1 fixed.** `src/ChatWidget.tsx` now runs every markdown link through
   `isSafeChatLinkHref()` (allows only `/`, `#`, `http://`, `https://`) before rendering it
   as a real `<a href>`; anything else renders as plain text.
+- **2026-11-24 — L2 fixed.** Added `readBoundedBody`/`boundedJson`/`boundedFormData` to
+  `worker/lib/security.ts`: they read the request stream and reject once the real byte
+  count exceeds the route's limit, regardless of a missing, absent, or understated
+  `Content-Length`. Every `c.req.raw.json()`/`.formData()` call in `worker/index.ts` (10
+  call sites: partner apply, listing create, KTP verification, AI recommendations,
+  register, login, profile update, billing checkout, Mayar webhook, chat) now goes
+  through one of these instead of the unbounded native parser. `bodyTooLarge()` is kept
+  as a cheap header-based pre-check, not the sole guard.
+- **2026-11-24 — I1 re-checked, not applicable.** `GET /api/listings` and
+  `POST /api/ai/rekomendasi` no longer run a SQL `LIKE` query for the city filter at all
+  — `getAllActiveListings()` fetches once and city matching happens in memory via
+  `.toLowerCase().includes()`. The no-op `ESCAPE` finding was based on an older build of
+  the worker; current source has no `LIKE`-escaping code path to fix.
+- **2026-11-24 — I2 re-checked, not applicable today.** `src/lib/nearby.ts` is not
+  imported by any component yet (`grep` for `fetchNearbyPlaces`/`lib/nearby` across
+  `src/**/*.tsx` returns no matches) — it's unused code, so the CSP mismatch blocks
+  nothing live. Revisit `worker/web.ts`'s `connect-src` (add the two Overpass hosts, or
+  proxy the call through `/api/*`) only once this feature is actually wired into the UI;
+  adding the allowance now would be an unnecessary CSP relaxation for a feature nothing
+  uses.
+- **I3, I4** remain informational with no code action (accepted webhook-token pattern;
+  local-only `.dev.vars` key, confirmed never committed). **I5** is resolved as a
+  byproduct of the M1 fix (`token_version` now gives logout real revocation).
 
-## Suggested priority order
+## Status
 
-1. M1 — stop dual-issuing the bearer token; rely on the `HttpOnly` cookie and add
-   `token_version` for logout revocation (closes M1 and I5 together).
-2. L1 — allow-list the chat link `href` scheme (cheap, removes the one plausible script-
-   execution path that would make M1 exploitable).
-3. L2 — enforce body-size caps while streaming, not just via `Content-Length`.
-4. I1/I2 — small correctness fixes (`ESCAPE '\'`, CSP `connect-src` or server-side proxy
-   for Overpass).
-5. L3/I4 — confirm demo data stays demo data; rotate the local chat key if it was ever
-   shared outside this machine.
+All actionable items from this audit (M1, L1, L2) are fixed and deployed to production as
+of 2026-11-24. I1 and I2 were re-checked against current source and found not applicable
+(see remediation log). Remaining open items are informational/process notes only: confirm
+`src/data/catalog.ts` owner contact fields stay demo data (L3), and rotate the local
+`CHAT_API_KEY` in `.dev.vars` if it was ever shared outside this machine (I4) — neither
+requires a code change.
