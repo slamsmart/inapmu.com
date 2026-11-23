@@ -33,6 +33,16 @@ const COPY = {
   },
 } as const;
 
+/**
+ * Only ever render an `href` the app itself can safely navigate: an internal
+ * path/hash, or a plain http(s) link. Never trust a scheme like `javascript:`
+ * or `data:` from model output, even though today's system prompt only asks
+ * for `/#listing-ID` links.
+ */
+function isSafeChatLinkHref(url: string): boolean {
+  return /^(https?:)?\/\//i.test(url) || url.startsWith("/") || url.startsWith("#");
+}
+
 function formatText(text: string, onSelectListing?: (id: number) => void): ReactNode[] {
   // Parse markdown bold **text** and markdown links [Label](url)
   const tokens = text.split(/(\*\*.*?\*\*|\[.*?\]\(.*?\))/g);
@@ -44,6 +54,7 @@ function formatText(text: string, onSelectListing?: (id: number) => void): React
     if (linkMatch) {
       const label = linkMatch[1];
       const url = linkMatch[2];
+      if (!isSafeChatLinkHref(url)) return label;
       const listingMatch = url.match(/#listing-(\d+)/);
       return (
         <a

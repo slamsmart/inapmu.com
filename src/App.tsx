@@ -8,7 +8,7 @@ import CheckoutModal from "./CheckoutModal";
 import ChatWidget from "./ChatWidget";
 import InstallPwaButton from "./InstallPwaButton";
 import AccountModal, { UserAvatar } from "./AccountModal";
-import { ApiRequestError, currentSession, displayName, getActivePlan, getCurrentUser, loginUser, logoutUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication, type ActivePlan, type PaidPlan, type SessionUser } from "./lib/api";
+import { ApiRequestError, displayName, getActivePlan, getCurrentUser, loginUser, logoutUser, registerUser, setTurnstileTokenProvider, submitPartnerApplication, type ActivePlan, type PaidPlan, type SessionUser } from "./lib/api";
 import { useTurnstile } from "./lib/turnstile";
 import { CATALOG_LISTINGS } from "./data/catalog";
 import { matchScore, priceLabel, median, medianKey, parseQuery, type PriceLabel, type ListingForScoring } from "./lib/score";
@@ -966,7 +966,7 @@ export default function App() {
   const openDashboard = () => {
     setMobileMenuOpen(false);
     setPartnerOpen(false);
-    if (!authenticatedUser && !currentSession()) {
+    if (!authenticatedUser) {
       openAuth("login");
       return;
     }
@@ -989,7 +989,7 @@ export default function App() {
       openPartner();
       return;
     }
-    if (!authenticatedUser && !currentSession()) {
+    if (!authenticatedUser) {
       setPendingCheckoutPlan(plan);
       openAuth("login");
       return;
@@ -1708,7 +1708,7 @@ export default function App() {
                         onClick={() => {
                           const plan = pendingCheckoutPlan;
                           closePartner();
-                          if (!authenticatedUser && !currentSession()) {
+                          if (!authenticatedUser) {
                             openAuth("login");
                           } else {
                             setPendingCheckoutPlan(null);
@@ -1939,8 +1939,7 @@ export default function App() {
                         await registerUser(email, password, name);
                         setAuthResult("email");
                       } else {
-                        const { token, user } = await loginUser(email, password);
-                        saveSession(token);
+                        const { user } = await loginUser(email, password);
                         setAuthenticatedUser(user);
                         setAuthResult("email");
                       }

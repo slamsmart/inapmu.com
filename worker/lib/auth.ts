@@ -61,7 +61,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   }
 }
 
-export type SessionPayload = { userId: number; email: string; issuedAt: number };
+export type SessionPayload = { userId: number; email: string; tokenVersion: number; issuedAt: number };
 
 /**
  * HMAC-signed stateless session token (compact JWT-like, HS-256 shape):
@@ -119,6 +119,8 @@ export async function readSessionToken(
       !Number.isInteger(payload.userId) ||
       payload.userId < 1 ||
       typeof payload.email !== "string" ||
+      !Number.isInteger(payload.tokenVersion) ||
+      payload.tokenVersion < 0 ||
       !Number.isFinite(payload.issuedAt) ||
       payload.issuedAt > now() + 60_000 ||
       now() - payload.issuedAt > ttlSeconds * 1000

@@ -36,10 +36,10 @@ function withTurnstile(formData: FormData): FormData {
   return formData;
 }
 
-function authorizationHeaders(): Record<string, string> {
-  const token = currentSession();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+// The session lives only in the HttpOnly `inapmu_session` cookie the server
+// sets on login. It is never read or stored by JavaScript, so a script
+// running on the page (e.g. an XSS bug) cannot steal it. `credentials:
+// "same-origin"` ensures the cookie is sent on every same-origin request.
 
 export type PartnerApplication = {
   fullName: string;
@@ -62,7 +62,6 @@ export async function submitPartnerApplication(input: PartnerApplication): Promi
 
   const response = await fetch("/api/partners/apply", {
     method: "POST",
-    headers: authorizationHeaders(),
     credentials: "same-origin",
     body: formData,
   });
@@ -94,7 +93,7 @@ export async function createListing(input: ListingInput): Promise<void> {
   formData.set("website", "");
   for (const photo of input.photos) formData.append("photos", photo);
 
-  const response = await fetch("/api/listings", { method: "POST", headers: authorizationHeaders(), body: formData });
+  const response = await fetch("/api/listings", { method: "POST", credentials: "same-origin", body: formData });
   if (!response.ok) await parseError(response);
 }
 
@@ -103,7 +102,7 @@ export async function submitVerification(ktp: File): Promise<void> {
   formData.set("ktp", ktp);
   formData.set("website", "");
 
-  const response = await fetch("/api/verifications", { method: "POST", headers: authorizationHeaders(), body: formData });
+  const response = await fetch("/api/verifications", { method: "POST", credentials: "same-origin", body: formData });
   if (!response.ok) await parseError(response);
 }
 
@@ -124,7 +123,7 @@ export function displayName(user: Pick<SessionUser, "email" | "name">): string {
 export async function updateProfile(input: { name: string; phone: string }): Promise<SessionUser> {
   const response = await fetch("/api/auth/profile", {
     method: "POST",
-    headers: { "content-type": "application/json", ...authorizationHeaders() },
+    headers: { "content-type": "application/json" },
     credentials: "same-origin",
     body: JSON.stringify(input),
   });
@@ -133,11 +132,6 @@ export async function updateProfile(input: { name: string; phone: string }): Pro
 }
 
 export async function logoutUser(): Promise<void> {
-  try {
-    sessionStorage.removeItem("inapmu.session");
-  } catch {
-    // storage unavailable
-  }
   await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
 }
 
@@ -151,42 +145,26 @@ export async function registerUser(email: string, password: string, name: string
   if (!response.ok) await parseError(response);
 }
 
-export async function loginUser(email: string, password: string): Promise<{ token: string; user: SessionUser }> {
+export async function loginUser(email: string, password: string): Promise<{ user: SessionUser }> {
   const cfTurnstileResponse = turnstileTokenProvider();
   const response = await fetch("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
+    credentials: "same-origin",
     body: JSON.stringify({ email, password, cfTurnstileResponse }),
   });
   if (!response.ok) await parseError(response);
-  return (await response.json()) as { token: string; user: SessionUser };
+  return (await response.json()) as { user: SessionUser };
 }
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const response = await fetch("/api/auth/me", {
-    headers: authorizationHeaders(),
     credentials: "same-origin",
   });
   if (response.status === 401) return null;
   if (!response.ok) await parseError(response);
   const body = (await response.json()) as { user?: SessionUser };
   return body.user ?? null;
-}
-
-export function saveSession(token: string): void {
-  try {
-    sessionStorage.setItem("inapmu.session", token);
-  } catch {
-    // storage unavailable (private mode) — session simply not persisted
-  }
-}
-
-export function currentSession(): string | null {
-  try {
-    return sessionStorage.getItem("inapmu.session");
-  } catch {
-    return null;
-  }
 }
 
 export function mediaUrl(objectKey: string | null): string | null {
@@ -214,7 +192,7 @@ export type CheckoutOrder = {
 export async function createCheckout(plan: PaidPlan, mobile?: string): Promise<CheckoutOrder> {
   const response = await fetch("/api/billing/checkout", {
     method: "POST",
-    headers: { "content-type": "application/json", ...authorizationHeaders() },
+    headers: { "content-type": "application/json" },
     credentials: "same-origin",
     body: JSON.stringify({ plan, mobile }),
   });
@@ -224,7 +202,6 @@ export async function createCheckout(plan: PaidPlan, mobile?: string): Promise<C
 
 export async function getCheckoutOrder(orderId: string): Promise<CheckoutOrder> {
   const response = await fetch(`/api/billing/orders/${encodeURIComponent(orderId)}`, {
-    headers: authorizationHeaders(),
     credentials: "same-origin",
   });
   if (!response.ok) await parseError(response);
@@ -232,7 +209,7 @@ export async function getCheckoutOrder(orderId: string): Promise<CheckoutOrder> 
 }
 
 export async function getActivePlan(): Promise<ActivePlan | null> {
-  const response = await fetch("/api/billing/me", { headers: authorizationHeaders(), credentials: "same-origin" });
+  const response = await fetch("/api/billing/me", { credentials: "same-origin" });
   if (response.status === 401) return null;
   if (!response.ok) await parseError(response);
   return (await response.json()) as ActivePlan;

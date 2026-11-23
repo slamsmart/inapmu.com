@@ -336,19 +336,18 @@ async function authenticate(c: AppContext): Promise<AuthenticatedUser | Response
   const secret = sessionSecret(c);
   if (!secret) return errorResponse(c, 503, { error: "auth_unavailable" });
 
-  const authorization = c.req.header("Authorization") ?? "";
-  const token = authorization
-    ? /^Bearer [^\s]+$/.test(authorization) ? authorization.slice(7) : null
-    : cookieValue(c.req.raw, "inapmu_session");
+  // Browser sessions only: the token lives in the HttpOnly cookie, never in a
+  // script-readable store, so an XSS bug can't read or replay it directly.
+  const token = cookieValue(c.req.raw, "inapmu_session");
   if (!token) return errorResponse(c, 401, { error: "unauthorized" });
 
   const session = await readSessionToken(secret, token, 60 * 60 * 24 * 7);
   if (!session) return errorResponse(c, 401, { error: "unauthorized" });
 
-  const user = await c.env.DB.prepare(`SELECT id, email, name, role FROM users WHERE id = ?1`)
+  const user = await c.env.DB.prepare(`SELECT id, email, name, role, token_version FROM users WHERE id = ?1`)
     .bind(session.userId)
-    .first<AuthenticatedUser>();
-  if (!user) return errorResponse(c, 401, { error: "unauthorized" });
+    .first<AuthenticatedUser & { token_version: number }>();
+  if (!user || user.token_version !== session.tokenVersion) return errorResponse(c, 401, { error: "unauthorized" });
   return user;
 }
 
@@ -410,7 +409,7 @@ app.post("/api/partners/apply", async (c) => {
   if (recent) return c.json({ ok: true, duplicate: true }, 200);
 
   // Optional: link the application to the signed-in account (public form also works logged out).
-  const signedIn = c.req.header("Authorization") || cookieValue(c.req.raw, "inapmu_session") ? await authenticate(c) : null;
+  const signedIn = cookieValue(c.req.raw, "inapmu_session") ? await authenticate(c) : null;
   const userId = signedIn && !(signedIn instanceof Response) ? signedIn.id : null;
 
   const result = await c.env.DB.prepare(
@@ -817,7 +816,12 @@ app.get("/api/auth/google/callback", async (c) => {
       }
     }
 
-    const token = await createSessionToken(secret, { userId, email, issuedAt: now() }, 60 * 60 * 24 * 7);
+    const tokenVersionRow = await c.env.DB.prepare(`SELECT token_version FROM users WHERE id = ?1`).bind(userId).first<{ token_version: number }>();
+    const token = await createSessionToken(
+      secret,
+      { userId, email, tokenVersion: tokenVersionRow?.token_version ?? 0, issuedAt: now() },
+      60 * 60 * 24 * 7,
+    );
     return oauthResultRedirect(c, "success", undefined, [clearState, sessionCookie(c.req.raw, token)]);
   } catch (error) {
     console.error("google oauth callback failed", error);
@@ -883,15 +887,21 @@ app.post("/api/auth/login", async (c) => {
     return errorResponse(c, 422, { error: "validation_failed" });
   }
 
-  const user = await c.env.DB.prepare(`SELECT id, email, name, password_hash FROM users WHERE email = ?1`)
+  const user = await c.env.DB.prepare(`SELECT id, email, name, password_hash, token_version FROM users WHERE email = ?1`)
     .bind(email)
-    .first<{ id: number; email: string; name: string | null; password_hash: string }>();
+    .first<{ id: number; email: string; name: string | null; password_hash: string; token_version: number }>();
   const ok = user ? await verifyPassword(password, user.password_hash) : false;
   if (!user || !ok) return errorResponse(c, 401, { error: "invalid_credentials" });
 
-  const token = await createSessionToken(secret, { userId: user.id, email: user.email, issuedAt: now() }, 60 * 60 * 24 * 7);
+  const token = await createSessionToken(
+    secret,
+    { userId: user.id, email: user.email, tokenVersion: user.token_version, issuedAt: now() },
+    60 * 60 * 24 * 7,
+  );
   c.header("Set-Cookie", sessionCookie(c.req.raw, token));
-  return c.json({ ok: true, token, user: { id: user.id, email: user.email, name: user.name } }, 200);
+  // The session lives only in the HttpOnly cookie; it is never returned in the
+  // response body, so a script running on the page (e.g. XSS) cannot read it.
+  return c.json({ ok: true, user: { id: user.id, email: user.email, name: user.name } }, 200);
 });
 
 app.get("/api/auth/me", async (c) => {
@@ -933,9 +943,14 @@ app.post("/api/auth/profile", async (c) => {
   return c.json({ user }, 200);
 });
 
-// Logout clears the HttpOnly cookie (set by Google sign-in and email login).
-// Tokens are stateless, so the client also drops its stored bearer token.
-app.post("/api/auth/logout", (c) => {
+// Logout clears the HttpOnly cookie and bumps token_version so any other copy
+// of the session token (e.g. one that already leaked) is rejected immediately
+// instead of staying valid for the rest of its natural 7-day life.
+app.post("/api/auth/logout", async (c) => {
+  const authenticated = await authenticate(c);
+  if (!(authenticated instanceof Response)) {
+    await c.env.DB.prepare(`UPDATE users SET token_version = token_version + 1 WHERE id = ?1`).bind(authenticated.id).run();
+  }
   c.header("Set-Cookie", `inapmu_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${cookieScope(c.req.raw)}`);
   return c.json({ ok: true }, 200);
 });
