@@ -35,6 +35,18 @@ import {
 } from "./lib/util";
 import { createInvoice, findQrisPayload, MayarApiError, redactPayload, safeMayarLink, type MayarConfig } from "./lib/mayar";
 import {
+  matchReasons,
+  matchScore,
+  median,
+  medianKey,
+  parseAmenitiesInput,
+  parseQuery,
+  priceLabel,
+  type ListingForScoring,
+  type ScoreContext,
+} from "./lib/score";
+import { CATALOG_LISTINGS, DB_LISTING_ID_OFFSET, PLAN_PRICES as SITE_PLAN_PRICES, SITE_FACTS_ID } from "../src/data/catalog";
+import {
   activePlan,
   isPartner,
   ORDER_TTL_MS,
@@ -66,6 +78,125 @@ type AppBindings = Bindings & {
 };
 type AppContext = Context<{ Bindings: AppBindings }>;
 type AuthenticatedUser = { id: number; email: string; name: string | null; role: string };
+
+// ---------------------------------------------------------------------------
+// AI layer: shared scoring glue between D1 rows and worker/lib/score.ts
+// ---------------------------------------------------------------------------
+
+type RawListingRow = {
+  id: number;
+  title: string;
+  type: string;
+  city: string;
+  address: string | null;
+  price: number;
+  period: string;
+  description: string;
+  maps_url: string | null;
+  cover_image_key: string | null;
+  amenities: string | null;
+  created_at: number;
+  plan: string;
+  owner_verified: number | boolean;
+};
+
+type ScoredListing = RawListingRow & {
+  amenitiesList: string[];
+  ownerVerified: boolean;
+  matchScore: number;
+  priceLabel: "below" | "fair" | "above";
+  priceDiffPercent: number;
+  medianPrice: number;
+};
+
+function toScoringInput(row: RawListingRow, amenitiesList: string[], ownerVerified: boolean): ListingForScoring {
+  return {
+    price: row.price,
+    type: row.type,
+    city: row.city,
+    address: row.address,
+    title: row.title,
+    description: row.description,
+    amenities: amenitiesList,
+    ownerVerified,
+  };
+}
+
+/** Attaches matchScore + priceLabel (vs. the median of comparable rows) to every listing. */
+function attachScoring(rows: RawListingRow[], ctx: Parameters<typeof matchScore>[1]): ScoredListing[] {
+  const priceByGroup = new Map<string, number[]>();
+  for (const row of rows) {
+    const key = medianKey(row.city, row.type);
+    const list = priceByGroup.get(key) ?? [];
+    list.push(row.price);
+    priceByGroup.set(key, list);
+  }
+  const medianByGroup = new Map<string, number>();
+  for (const [key, prices] of priceByGroup) medianByGroup.set(key, median(prices));
+
+  return rows.map((row) => {
+    const amenitiesList = row.amenities ? row.amenities.split(",").filter(Boolean) : [];
+    const ownerVerified = Boolean(row.owner_verified);
+    const med = medianByGroup.get(medianKey(row.city, row.type)) ?? 0;
+    const scoringInput = toScoringInput(row, amenitiesList, ownerVerified);
+    const { label, diffPercent } = priceLabel(row.price, med);
+    return {
+      ...row,
+      amenitiesList,
+      ownerVerified,
+      matchScore: matchScore(scoringInput, ctx, med),
+      priceLabel: label,
+      priceDiffPercent: diffPercent,
+      medianPrice: med,
+    };
+  });
+}
+
+function catalogListingToRaw(item: (typeof CATALOG_LISTINGS)[0]): RawListingRow {
+  const city = item.location.includes(",") ? item.location.split(",")[1].trim() : item.location;
+  return {
+    id: item.id,
+    title: item.title,
+    type: item.type,
+    city,
+    address: item.location,
+    price: item.price,
+    period: item.period,
+    description: item.description,
+    maps_url: null,
+    cover_image_key: null,
+    amenities: item.amenities.join(","),
+    created_at: 0,
+    plan: item.plan ?? "free",
+    owner_verified: 1,
+  };
+}
+
+const CATALOG_RAW_LISTINGS: RawListingRow[] = CATALOG_LISTINGS.map(catalogListingToRaw);
+
+async function getAllActiveListings(db: D1Database): Promise<RawListingRow[]> {
+  const listingColumns = `l.id, l.title, l.type, l.city, l.address, l.price, l.period, l.description, l.maps_url, l.cover_image_key, l.amenities, l.created_at,
+           CASE WHEN u.plan IN ('gold', 'platinum') AND u.plan_expires_at > ?1 THEN u.plan ELSE 'free' END AS plan,
+           EXISTS (SELECT 1 FROM verifications v WHERE v.user_id = l.owner_user_id AND v.status = 'verified') AS owner_verified`;
+  try {
+    const dbRows = await db
+      .prepare(
+        `SELECT ${listingColumns}
+         FROM listings l LEFT JOIN users u ON u.id = l.owner_user_id
+         WHERE l.status = 'approved' ORDER BY l.created_at DESC LIMIT 200`,
+      )
+      .bind(now())
+      .all<RawListingRow>();
+
+    const shiftedDbRows = (dbRows.results ?? []).map((r) => ({
+      ...r,
+      id: r.id + DB_LISTING_ID_OFFSET,
+    }));
+    return [...CATALOG_RAW_LISTINGS, ...shiftedDbRows];
+  } catch {
+    return [...CATALOG_RAW_LISTINGS];
+  }
+}
 
 const app = new Hono<{ Bindings: AppBindings }>();
 
@@ -328,6 +459,7 @@ app.post("/api/listings", async (c) => {
   const period = String(formData.get("period") ?? "");
   const description = String(formData.get("description") ?? "").trim();
   const mapsUrl = String(formData.get("mapsUrl") ?? "").trim();
+  const amenities = parseAmenitiesInput(String(formData.get("amenities") ?? "")).join(",");
 
   if (
     !isSafeText(title, 160) ||
@@ -370,10 +502,23 @@ app.post("/api/listings", async (c) => {
     }
 
     const result = await c.env.DB.prepare(
-      `INSERT INTO listings (owner_user_id, title, type, city, address, price, period, description, maps_url, cover_image_key, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
+      `INSERT INTO listings (owner_user_id, title, type, city, address, price, period, description, maps_url, cover_image_key, amenities, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`,
     )
-      .bind(authenticated.id, title, type, city, address || null, price, period, description, mapsUrl || null, photoKeys[0] ?? null, now())
+      .bind(
+        authenticated.id,
+        title,
+        type,
+        city,
+        address || null,
+        price,
+        period,
+        description,
+        mapsUrl || null,
+        photoKeys[0] ?? null,
+        amenities,
+        now(),
+      )
       .run();
 
     const listingId = result.meta.last_row_id;
@@ -453,26 +598,65 @@ app.get("/api/listings", async (c) => {
   const limitRaw = Number(c.req.query("limit") ?? "100");
   const limit = Number.isInteger(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? limitRaw : 100;
 
-  // `plan` is the owner's currently active plan (drives Trusted badges and the Platinum hero slider).
-  const listingColumns = `l.id, l.title, l.type, l.city, l.price, l.period, l.description, l.maps_url, l.cover_image_key, l.created_at,
-           CASE WHEN u.plan IN ('gold', 'platinum') AND u.plan_expires_at > ?1 THEN u.plan ELSE 'free' END AS plan`;
-  const rows = city
-    ? await c.env.DB.prepare(
-        `SELECT ${listingColumns}
-         FROM listings l LEFT JOIN users u ON u.id = l.owner_user_id
-         WHERE l.status = 'approved' AND lower(l.city) LIKE ?2 ORDER BY l.created_at DESC LIMIT ?3`,
-      )
-      .bind(now(), `%${city.replace(/[%_]/g, (m) => `\\${m}`)}%`, limit)
-      .all()
-    : await c.env.DB.prepare(
-        `SELECT ${listingColumns}
-         FROM listings l LEFT JOIN users u ON u.id = l.owner_user_id
-         WHERE l.status = 'approved' ORDER BY l.created_at DESC LIMIT ?2`,
-      )
-      .bind(now(), limit)
-      .all();
+  const all = await getAllActiveListings(c.env.DB);
+  const filtered = city
+    ? all.filter((l) => l.city.toLowerCase().includes(city) || (l.address ?? "").toLowerCase().includes(city))
+    : all;
 
-  return c.json({ listings: rows.results });
+  return c.json({ listings: attachScoring(filtered.slice(0, limit), {}) });
+});
+
+// ---------------------------------------------------------------------------
+// AI: match-score recommendations over real, approved listings only.
+// Deterministic scoring (worker/lib/score.ts) — no LLM call, so it cannot
+// invent a price, facility, or listing that isn't in the database.
+// ---------------------------------------------------------------------------
+
+app.post("/api/ai/rekomendasi", async (c) => {
+  if (bodyTooLarge(c.req.raw, 4_000)) return errorResponse(c, 413, { error: "payload_too_large" });
+
+  const limit = await rateLimit(c.env.DB, `ai-rekomendasi:${fingerprint(clientIp(c.req.raw))}`, 300, 20);
+  if (!limit.allowed) return c.json({ error: "rate_limited", retryAfter: limit.retryAfterSeconds }, 429);
+
+  const body = await c.req.raw.json().catch(() => null);
+  if (!body || typeof body !== "object") return errorResponse(c, 400, { error: "invalid_json" });
+
+  const query = typeof (body as Record<string, unknown>).query === "string" ? (body as Record<string, unknown>).query.slice(0, 300) : "";
+  const cityFilter = typeof (body as Record<string, unknown>).city === "string" ? (body as Record<string, unknown>).city.trim() : "";
+
+  const ctx = parseQuery(query ?? "");
+  // Explicit fields in the request body override anything parsed from `query`.
+  const explicitBudget = Number((body as Record<string, unknown>).budgetMax);
+  if (Number.isFinite(explicitBudget) && explicitBudget > 0) ctx.budgetMax = explicitBudget;
+  const explicitType = (body as Record<string, unknown>).type;
+  if (typeof explicitType === "string" && ["Kos", "Kontrakan", "Vila"].includes(explicitType)) ctx.type = explicitType;
+
+  const all = await getAllActiveListings(c.env.DB);
+  const pool = cityFilter
+    ? all.filter((l) => l.city.toLowerCase().includes(cityFilter.toLowerCase()) || (l.address ?? "").toLowerCase().includes(cityFilter.toLowerCase()))
+    : all;
+
+  const scored = attachScoring(pool, ctx)
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, 5)
+    .map((item) => ({
+      id: item.id,
+      title: item.title,
+      type: item.type,
+      city: item.city,
+      address: item.address,
+      price: item.price,
+      period: item.period,
+      amenities: item.amenitiesList,
+      ownerVerified: item.ownerVerified,
+      matchScore: item.matchScore,
+      priceLabel: item.priceLabel,
+      priceDiffPercent: item.priceDiffPercent,
+      reasons: matchReasons(toScoringInput(item, item.amenitiesList, item.ownerVerified), ctx, item.medianPrice),
+      url: `/#listing-${item.id}`,
+    }));
+
+  return c.json({ parsed: ctx, results: scored });
 });
 
 // Public: media proxy from R2 (images only, immutable cache).
@@ -958,18 +1142,34 @@ app.post("/api/webhooks/mayar", async (c) => {
   return c.json({ ok: true });
 });
 
-const CHAT_SYSTEM_PROMPT =
-  "Kamu adalah asisten virtual inapmu.com, platform pencarian dan sewa kos/properti di Indonesia. " +
-  "Jawab singkat, ramah, dan sesuai bahasa pengguna. Bantu soal pencarian kos, harga, paket langganan, dan pendaftaran mitra. " +
-  "Jangan mengarang data listing atau harga; jika tidak tahu, arahkan pengguna ke menu di situs.";
+function generateFallbackChatReply(query: string, topListings: ScoredListing[], language: "id" | "en" = "id"): string {
+  if (topListings.length === 0) {
+    return language === "en"
+      ? "Sorry, there are no properties on inapmu.com matching those criteria right now. You can check all available properties directly on the homepage."
+      : "Maaf, saat ini belum ada properti di inapmu.com yang cocok dengan kriteria tersebut. Anda dapat menjelajahi properti lainnya langsung di halaman beranda.";
+  }
+  const prefix = language === "en"
+    ? "Berikut rekomendasi properti di **inapmu.com** yang cocok untuk pencarian Anda:\n\n"
+    : "Berikut rekomendasi properti di **inapmu.com** yang cocok untuk Anda:\n\n";
 
-app.post("/api/chat", async (c) => {
-  const baseUrl = c.env.CHAT_BASE_URL?.trim().replace(/\/+$/, "");
-  const apiKey = c.env.CHAT_API_KEY?.trim();
-  if (!baseUrl || !apiKey || !baseUrl.startsWith("https://")) return errorResponse(c, 503, { error: "chat_unavailable" });
+  const items = topListings.slice(0, 3).map((item, i) => {
+    const reasons = matchReasons(toScoringInput(item, item.amenitiesList, item.ownerVerified), parseQuery(query), item.medianPrice);
+    const reasonText = reasons.length > 0 ? `\n   - Cocok karena: ${reasons.join(", ")}` : "";
+    const priceText = `Rp${item.price.toLocaleString("id-ID")} / ${item.period}`;
+    return `${i + 1}. **[${item.title}](/#listing-${item.id})** (${item.type})\n   - Lokasi: ${item.address || item.city}\n   - Harga: ${priceText} (${item.matchScore}% cocok)${reasonText}`;
+  }).join("\n\n");
+
+  const suffix = language === "en"
+    ? "\n\nClick any property title above to view full details or schedule a survey directly with the verified owner!"
+    : "\n\nKlik nama properti di atas untuk melihat detail lengkap atau jadwalkan survei langsung dengan pemilik terverifikasi!";
+
+  return prefix + items + suffix;
+}
+
+async function handleChat(c: Context<{ Bindings: AppBindings }>) {
   if (bodyTooLarge(c.req.raw, 16_000)) return errorResponse(c, 413, { error: "payload_too_large" });
 
-  const limit = await rateLimit(c.env.DB, `chat:${fingerprint(clientIp(c.req.raw))}`, 300, 20);
+  const limit = await rateLimit(c.env.DB, `chat:${fingerprint(clientIp(c.req.raw))}`, 300, 30);
   if (!limit.allowed) return c.json({ error: "rate_limited", retryAfter: limit.retryAfterSeconds }, 429);
 
   const body = await c.req.raw.json().catch(() => null);
@@ -988,26 +1188,84 @@ app.post("/api/chat", async (c) => {
     return errorResponse(c, 422, { error: "validation_failed" });
   }
 
+  const lastUserMessage = messages[messages.length - 1].content;
+  const ctx = parseQuery(lastUserMessage);
+  const allListings = await getAllActiveListings(c.env.DB);
+  const scored = attachScoring(allListings, ctx).sort((a, b) => b.matchScore - a.matchScore);
+  const topListings = scored.slice(0, 3);
+
+  const groundedListingCatalog = topListings.map((l, idx) => {
+    const reasons = matchReasons(toScoringInput(l, l.amenitiesList, l.ownerVerified), ctx, l.medianPrice);
+    return `${idx + 1}. [${l.title}](/#listing-${l.id})\n   Tipe: ${l.type}\n   Lokasi: ${l.address || l.city}\n   Harga: Rp${l.price.toLocaleString("id-ID")} / ${l.period}\n   Fasilitas: ${l.amenitiesList.join(", ") || "Standar"}\n   Pemilik Terverifikasi: ${l.ownerVerified ? "Ya" : "Tidak"}\n   Skor Kecocokan: ${l.matchScore}%\n   Status Harga: ${l.priceLabel} (${l.priceDiffPercent}%)\n   Alasan Cocok: ${reasons.join(", ") || "Sesuai filter pencarian"}`;
+  }).join("\n\n");
+
+  const siteFactsText = SITE_FACTS_ID.map((f) => `- ${f}`).join("\n");
+
+  const systemPrompt =
+    `Kamu adalah Asisten AI resmi inapmu.com, platform pencarian kos, kontrakan, dan vila di Indonesia.\n\n` +
+    `SUMBER DATA RESMI INAPMU.COM (HANYA GUNAKAN DATA INI):\n` +
+    `Fakta Platform & Paket Mitra:\n${siteFactsText}\n\n` +
+    `Daftar Properti Teratas yang Tersedia di Inapmu.com:\n${groundedListingCatalog}\n\n` +
+    `ATURAN KETAT ANTI-HALUSINASI:\n` +
+    `1. HANYA rekomendasikan properti dari daftar data listing di atas. JANGAN PERNAH mengarang nama properti, harga, lokasi, atau fasilitas yang tidak tertulis di data!\n` +
+    `2. Jika pengguna mencari tempat tinggal (misal kos, vila, kontrakan, budget tertentu, atau lokasi tertentu), sebutkan maksimal 3 properti dari data di atas.\n` +
+    `3. Format setiap rekomendasi properti WAJIB menyertakan link markdown persis seperti [Judul Properti](/#listing-ID), harga resmi per periode, lokasi, dan alasan kenapa cocok.\n` +
+    `4. Jika pengguna mencari hal yang tidak ada di data atau budget terlalu rendah, katakan terus terang bahwa belum ada yang cocok dan tawarkan opsi terdekat dari data yang tersedia.\n` +
+    `5. Jika ditanya tentang harga paket mitra atau layanan inapmu, jawab persis sesuai Fakta Platform di atas.\n` +
+    `6. Jawab dengan ramah, informatif, dan ringkas dalam bahasa pengguna.`;
+
+  const baseUrl = c.env.CHAT_BASE_URL?.trim().replace(/\/+$/, "");
+  const apiKey = c.env.CHAT_API_KEY?.trim();
+
+  // If upstream LLM configuration is missing, use deterministic grounded fallback.
+  if (!baseUrl || !apiKey || !baseUrl.startsWith("https://")) {
+    return c.json({
+      reply: generateFallbackChatReply(lastUserMessage, topListings),
+      grounded: true,
+      recommendations: topListings.map((t) => ({ id: t.id, title: t.title, matchScore: t.matchScore })),
+    });
+  }
+
   const upstream = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: c.env.CHAT_MODEL?.trim() || "default",
-      max_tokens: 1500, // reasoning models spend part of this budget on hidden thinking
+      max_tokens: 1200,
       reasoning_effort: "low",
-      messages: [{ role: "system", content: CHAT_SYSTEM_PROMPT }, ...messages],
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
     }),
     signal: AbortSignal.timeout(25_000),
   }).catch(() => null);
+
   if (!upstream || !upstream.ok) {
-    console.error("chat upstream failed", upstream?.status);
-    return errorResponse(c, 502, { error: "chat_upstream_failed" });
+    console.error("chat upstream failed, falling back to deterministic response", upstream?.status);
+    return c.json({
+      reply: generateFallbackChatReply(lastUserMessage, topListings),
+      grounded: true,
+      recommendations: topListings.map((t) => ({ id: t.id, title: t.title, matchScore: t.matchScore })),
+    });
   }
+
   const data = (await upstream.json().catch(() => null)) as { choices?: { message?: { content?: unknown } }[] } | null;
   const reply = data?.choices?.[0]?.message?.content;
-  if (typeof reply !== "string" || !reply.trim()) return errorResponse(c, 502, { error: "chat_upstream_failed" });
-  return c.json({ reply: reply.trim() });
-});
+  if (typeof reply !== "string" || !reply.trim()) {
+    return c.json({
+      reply: generateFallbackChatReply(lastUserMessage, topListings),
+      grounded: true,
+      recommendations: topListings.map((t) => ({ id: t.id, title: t.title, matchScore: t.matchScore })),
+    });
+  }
+
+  return c.json({
+    reply: reply.trim(),
+    grounded: true,
+    recommendations: topListings.map((t) => ({ id: t.id, title: t.title, matchScore: t.matchScore })),
+  });
+}
+
+app.post("/api/chat", handleChat);
+app.post("/api/ai/chat", handleChat);
 
 // Health check for deployment verification.
 app.get("/api/health", (c) => c.json({ ok: true }));

@@ -9,6 +9,9 @@ import ChatWidget from "./ChatWidget";
 import AccountModal, { UserAvatar } from "./AccountModal";
 import { ApiRequestError, currentSession, displayName, getActivePlan, getCurrentUser, loginUser, logoutUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication, type ActivePlan, type PaidPlan, type SessionUser } from "./lib/api";
 import { useTurnstile } from "./lib/turnstile";
+import { CATALOG_LISTINGS } from "./data/catalog";
+import { matchScore, priceLabel, median, medianKey, parseQuery, type PriceLabel, type ListingForScoring } from "./lib/score";
+import { fetchNearbyPlaces, nearbyKindLabel, formatNearbyDistance, type NearbyPlace } from "./lib/nearby";
 
 
 type IconName =
@@ -17,8 +20,11 @@ type IconName =
   | "chat"
   | "check"
   | "chevron"
+  | "database"
+  | "fork"
   | "heart"
   | "home"
+  | "landmark"
   | "location"
   | "menu"
   | "moon"
@@ -56,6 +62,12 @@ type Listing = {
   coordinates: [number, number];
   mapsUrl?: string;
   plan?: Plan;
+  amenities?: string[];
+  ownerVerified?: boolean;
+  matchScore?: number;
+  priceLabel?: PriceLabel;
+  priceDiffPercent?: number;
+  medianPrice?: number;
 };
 
 type Plan = "free" | "gold" | "platinum";
@@ -110,6 +122,12 @@ const copy = {
     managedBy: "Dikelola oleh",
     verified: "Terverifikasi",
     viewGoogle: "Lihat lokasi di Google Maps",
+    nearbyBadge: "AI Big Database",
+    nearbyTitleWisata: "Wisata terdekat",
+    nearbyTitleKuliner: "Kuliner terdekat",
+    nearbyTitleFasilitas: "Fasilitas umum terdekat",
+    nearbyLoading: "Mencari tempat terdekat…",
+    nearbyEmpty: "Belum ada data untuk kategori ini di sekitar lokasi.",
     chatOwner: "Chat pemilik",
     scheduleSurvey: "Jadwalkan survei",
     directBooking: "Listing ini mendukung pemesanan langsung melalui chat.",
@@ -243,6 +261,12 @@ const copy = {
     managedBy: "Managed by",
     verified: "Verified",
     viewGoogle: "View location in Google Maps",
+    nearbyBadge: "AI Big Database",
+    nearbyTitleWisata: "Nearby attractions",
+    nearbyTitleKuliner: "Nearby food & drink",
+    nearbyTitleFasilitas: "Nearby public facilities",
+    nearbyLoading: "Finding nearby places\u2026",
+    nearbyEmpty: "No data found for this category nearby.",
     chatOwner: "Chat with owner",
     scheduleSurvey: "Schedule a visit",
     directBooking: "This listing supports direct booking through chat.",
@@ -346,8 +370,11 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     chat: <><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 9h8M8 13h5"/></>,
     check: <path d="m5 12 4 4L19 6"/>,
     chevron: <path d="m9 18 6-6-6-6"/>,
+    database: <><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></>,
+    fork: <><path d="M7 2v7a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V2M9 11v11M15 2c-1.5 1-2 3-2 5s.8 3.8 2 4.5V22"/></>,
     heart: <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8z"/>,
     home: <><path d="m3 11 9-8 9 8"/><path d="M5 10v11h14V10M9 21v-7h6v7"/></>,
+    landmark: <><path d="M3 21h18M4 10h16M6 10V21M10 10V21M14 10V21M18 10V21M12 3 3 8h18L12 3z"/></>,
     location: <><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16"/></>,
     moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>,
@@ -423,126 +450,53 @@ function TrustedBadge({ plan, label, size = "sm" }: { plan?: Plan; label: string
   );
 }
 
-const listings: Listing[] = [
-  {
-    id: 1,
-    type: "Vila",
-    title: "Villa Senja Ubud",
-    location: "Ubud, Bali",
-    price: 1250000,
-    period: "malam",
-    rating: 4.92,
-    reviews: 128,
-    image: "https://images.unsplash.com/photo-1675657144518-025804f1812c?auto=format&fit=crop&w=1000&q=85",
-    promoted: true,
-    tag: "Kolam pribadi",
-    description: "Vila tropis yang tenang dengan kolam renang pribadi, dikelilingi sawah dan hanya 12 menit dari pusat Ubud.",
-    owner: "Ayu Prameswari",
-    ownerPhone: "628123450001",
-    ownerEmail: "ayu@inapmu.com",
-    plan: "platinum",
-    survey: true,
-    coordinates: [-8.5069, 115.2625] as [number, number],
-  },
-  {
-    id: 2,
-    type: "Kos",
-    title: "Kost Nara Setiabudi",
-    location: "Setiabudi, Jakarta Selatan",
-    price: 2850000,
-    period: "bulan",
-    rating: 4.84,
-    reviews: 76,
-    image: "https://images.unsplash.com/photo-1613553474179-e1eda3ea5734?auto=format&fit=crop&w=1000&q=85",
-    promoted: false,
-    tag: "Dekat MRT",
-    description: "Kost eksklusif berfasilitas lengkap, kamar terang, dan akses mudah ke kawasan bisnis Jakarta.",
-    owner: "Nara Living",
-    ownerPhone: "628123450002",
-    ownerEmail: "nara@inapmu.com",
-    plan: "gold",
-    survey: true,
-    coordinates: [-6.2151, 106.8307] as [number, number],
-  },
-  {
-    id: 3,
-    type: "Kontrakan",
-    title: "Rumah Teduh Ciumbuleuit",
-    location: "Ciumbuleuit, Bandung",
-    price: 42000000,
-    period: "tahun",
-    rating: 4.9,
-    reviews: 34,
-    image: "https://images.unsplash.com/photo-1584346884836-46e6d0d72db4?auto=format&fit=crop&w=1000&q=85",
-    promoted: false,
-    tag: "Pet friendly",
-    description: "Rumah dua lantai yang asri untuk keluarga kecil, dengan taman belakang dan lingkungan yang nyaman.",
-    owner: "Bima Properti",
-    ownerPhone: "628123450003",
-    ownerEmail: "bima@inapmu.com",
-    plan: "gold",
-    survey: true,
-    coordinates: [-6.8735, 107.6049] as [number, number],
-  },
-  {
-    id: 4,
-    type: "Vila",
-    title: "Kedaton Pool House",
-    location: "Canggu, Bali",
-    price: 1850000,
-    period: "malam",
-    rating: 4.96,
-    reviews: 93,
-    image: "https://images.unsplash.com/photo-1692736933760-8a8a9b8c1b6f?auto=format&fit=crop&w=1000&q=85",
-    promoted: true,
-    tag: "Favorit tamu",
-    description: "Pool house modern untuk liburan santai, dekat pantai dan tempat makan terbaik di Canggu.",
-    owner: "Kedaton Stays",
-    ownerPhone: "628123450004",
-    ownerEmail: "kedaton@inapmu.com",
-    plan: "platinum",
-    survey: false,
-    coordinates: [-8.6478, 115.1385] as [number, number],
-  },
-  {
-    id: 5,
-    type: "Kos",
-    title: "Ruang Rimba Coliving",
-    location: "Sleman, Yogyakarta",
-    price: 1750000,
-    period: "bulan",
-    rating: 4.78,
-    reviews: 51,
-    image: "https://images.unsplash.com/photo-1727079586096-5278670ab910?auto=format&fit=crop&w=1000&q=85",
-    promoted: false,
-    tag: "Area kerja",
-    description: "Hunian coliving hangat dengan ruang kerja bersama dan komunitas yang aktif.",
-    owner: "Ruang Rimba",
-    ownerPhone: "628123450005",
-    ownerEmail: "rimba@inapmu.com",
-    survey: true,
-    coordinates: [-7.7162, 110.3557] as [number, number],
-  },
-  {
-    id: 6,
-    type: "Kontrakan",
-    title: "Paviliun Kencana",
-    location: "Sanur, Bali",
-    price: 68000000,
-    period: "tahun",
-    rating: 4.87,
-    reviews: 22,
-    image: "https://images.unsplash.com/photo-1538430989507-797d5e4ba836?auto=format&fit=crop&w=1000&q=85",
-    promoted: false,
-    tag: "Siap huni",
-    description: "Paviliun lengkap dan nyaman di kawasan tenang, cocok untuk tinggal jangka panjang.",
-    owner: "Made Kencana",
-    ownerPhone: "628123450006",
-    ownerEmail: "kencana@inapmu.com",
-    survey: true,
-    coordinates: [-8.6904, 115.2632] as [number, number],
-  },
-];
+/** Small logo/badge crediting the geodata source behind the nearby-places feature. */
+function AiDatabaseBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-r from-[#0064D2] to-[#08C0A8] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.04em] text-white shadow-sm">
+      <Icon name="database" size={11} /> {label}
+    </span>
+  );
+}
+
+const NEARBY_CATEGORY_ICON: Record<NearbyPlace["category"], IconName> = {
+  wisata: "landmark",
+  kuliner: "fork",
+  fasilitas: "shield",
+};
+
+function NearbyPlacesGroup({ title, places, language, emptyLabel }: { title: string; places: NearbyPlace[]; language: Language; emptyLabel: string }) {
+  if (places.length === 0) {
+    return (
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-stone-500">{title}</p>
+        <p className="text-sm text-stone-400">{emptyLabel}</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-stone-500">{title}</p>
+      <ul className="space-y-2">
+        {places.slice(0, 5).map((place, index) => (
+          <li key={`${place.category}-${place.name}-${index}`} className="flex items-center gap-2.5 rounded-[12px] bg-stone-50 px-3 py-2 text-sm">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-[#0064D2] shadow-sm"><Icon name={NEARBY_CATEGORY_ICON[place.category]} size={15} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium text-[#111827]">{place.name}</span>
+              <span className="block text-xs text-stone-500">{nearbyKindLabel(place.kind, language)}</span>
+            </span>
+            <span className="shrink-0 text-xs font-bold text-stone-500">{formatNearbyDistance(place.distanceMeters, language)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const listings: Listing[] = CATALOG_LISTINGS.map((item) => ({
+  ...item,
+  ownerVerified: true,
+}));
 
 const formatPrice = (price: number) => new Intl.NumberFormat("id-ID").format(price);
 
@@ -648,12 +602,19 @@ function ListingCard({ item, onOpen, language }: { item?: Listing; onOpen: () =>
           {item.promoted && <span className="rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-stone-700 shadow-sm">{text.promoted}</span>}
           <span className="rounded-full bg-[#0064D2]/90 px-3 py-1.5 text-xs font-medium text-white backdrop-blur">{item.tag}</span>
         </div>
+        <div className="absolute right-3 top-3 flex items-center gap-2">
+          {item.matchScore !== undefined && (
+            <span className="rounded-full bg-[#073B6F]/90 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm backdrop-blur">
+              ✨ {item.matchScore}% cocok
+            </span>
+          )}
+          <button onClick={() => setSaved(!saved)} className={`grid h-9 w-9 place-items-center rounded-full bg-white/90 transition hover:scale-105 ${saved ? "text-[#FFB700]" : "text-stone-700"}`} aria-label="Simpan properti">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8z"/></svg>
+          </button>
+        </div>
         {item.plan && item.plan !== "free" && (
           <div className="absolute bottom-3 left-3"><TrustedBadge plan={item.plan} label={text.trusted} size="md" /></div>
         )}
-        <button onClick={() => setSaved(!saved)} className={`absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 transition hover:scale-105 ${saved ? "text-[#FFB700]" : "text-stone-700"}`} aria-label="Simpan properti">
-          <svg width="19" height="19" viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8z"/></svg>
-        </button>
       </div>
       <button onClick={onOpen} className="w-full pt-4 text-left">
         <div className="mb-1 flex items-start justify-between gap-3">
@@ -664,7 +625,23 @@ function ListingCard({ item, onOpen, language }: { item?: Listing; onOpen: () =>
           <StarRating rating={item.rating} compact />
         </div>
         <p className="mb-2 text-sm text-stone-500">{item.location} · {item.reviews} {text.reviews}</p>
-        <p className="text-[15px] text-stone-600"><strong className="font-semibold text-[#111827]">Rp{formatPrice(item.price)}</strong> / {periodLabel(item.period, language)}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[15px] text-stone-600"><strong className="font-semibold text-[#111827]">Rp{formatPrice(item.price)}</strong> / {periodLabel(item.period, language)}</p>
+          {item.priceLabel && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                item.priceLabel === "below"
+                  ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20"
+                  : item.priceLabel === "above"
+                  ? "bg-amber-50 text-amber-800 ring-1 ring-amber-600/20"
+                  : "bg-blue-50 text-[#0064D2] ring-1 ring-[#0064D2]/20"
+              }`}
+              title={`Median sejenis: Rp${item.medianPrice ? formatPrice(item.medianPrice) : "-"}`}
+            >
+              📊 {item.priceLabel === "below" ? `Di bawah pasaran (${item.priceDiffPercent}%)` : item.priceLabel === "above" ? `Di atas pasaran (+${item.priceDiffPercent}%)` : "Harga wajar"}
+            </span>
+          )}
+        </div>
       </button>
     </article>
   );
@@ -715,6 +692,26 @@ export default function App() {
       // Ignore blocked storage; the theme still applies for this visit.
     }
   }, [theme]);
+  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selected) {
+      setNearbyPlaces([]);
+      setNearbyLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setNearbyLoading(true);
+    fetchNearbyPlaces(selected.coordinates, selected.type).then((places) => {
+      if (cancelled) return;
+      setNearbyPlaces(places);
+      setNearbyLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, selected?.type]);
   const [partnerListings, setPartnerListings] = useState<PartnerListingInput[]>([]);
   const [partnerContact, setPartnerContact] = useState({
     name: "Mitra inapmu.com",
@@ -727,36 +724,90 @@ export default function App() {
 
   setTurnstileTokenProvider(() => partnerTurnstileToken ?? authTurnstileToken);
 
-  const marketplaceListings = useMemo<Listing[]>(() => [
-    ...listings,
-    ...partnerListings.map((item) => ({
-      id: item.id,
-      type: item.type,
-      title: item.title,
-      location: item.city,
-      price: Number(item.price),
-      period: item.period,
-      rating: 5,
-      reviews: 0,
-      image: item.image || "https://images.unsplash.com/photo-1613553474179-e1eda3ea5734?auto=format&fit=crop&w=1000&q=85",
-      promoted: false,
-      tag: language === "id" ? "Listing baru" : "New listing",
-      description: item.description,
-      owner: partnerContact.name,
-      ownerPhone: partnerContact.phone,
-      ownerEmail: partnerContact.email,
-      survey: true,
-      coordinates: coordinatesFromLocation(item.city, item.mapsUrl),
-      mapsUrl: item.mapsUrl,
-      plan: currentPlan.plan,
-    })),
-  ], [currentPlan.plan, language, partnerContact, partnerListings]);
+  const marketplaceListings = useMemo<Listing[]>(() => {
+    const rawList: Listing[] = [
+      ...listings,
+      ...partnerListings.map((item) => ({
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        location: item.city,
+        price: Number(item.price),
+        period: item.period,
+        rating: 5,
+        reviews: 0,
+        image: item.image || "https://images.unsplash.com/photo-1613553474179-e1eda3ea5734?auto=format&fit=crop&w=1000&q=85",
+        promoted: false,
+        tag: language === "id" ? "Listing baru" : "New listing",
+        description: item.description,
+        owner: partnerContact.name,
+        ownerPhone: partnerContact.phone,
+        ownerEmail: partnerContact.email,
+        survey: true,
+        coordinates: coordinatesFromLocation(item.city, item.mapsUrl),
+        mapsUrl: item.mapsUrl,
+        plan: currentPlan.plan,
+        amenities: [],
+        ownerVerified: true,
+      })),
+    ];
 
-  const filtered = useMemo(() => marketplaceListings.filter((item) => {
-    const matchesCategory = category === "Semua" || item.type === category;
-    const normalized = query.toLowerCase();
-    return matchesCategory && (item.location.toLowerCase().includes(normalized) || item.title.toLowerCase().includes(normalized));
-  }), [category, marketplaceListings, query]);
+    // Compute median price per comparable group (city + type)
+    const priceByGroup = new Map<string, number[]>();
+    for (const item of rawList) {
+      const city = item.location.includes(",") ? item.location.split(",")[1].trim() : item.location;
+      const key = medianKey(city, item.type);
+      const list = priceByGroup.get(key) ?? [];
+      list.push(item.price);
+      priceByGroup.set(key, list);
+    }
+    const medianByGroup = new Map<string, number>();
+    for (const [key, prices] of priceByGroup) medianByGroup.set(key, median(prices));
+
+    // Dynamic AI scoring based on active user search / budget query
+    const ctx = parseQuery(query);
+
+    return rawList.map((item) => {
+      const city = item.location.includes(",") ? item.location.split(",")[1].trim() : item.location;
+      const med = medianByGroup.get(medianKey(city, item.type)) ?? item.price;
+      const scoringInput: ListingForScoring = {
+        price: item.price,
+        type: item.type,
+        city,
+        address: item.location,
+        title: item.title,
+        description: item.description,
+        amenities: item.amenities ?? [],
+        ownerVerified: item.ownerVerified ?? true,
+      };
+      const { label, diffPercent } = priceLabel(item.price, med);
+      const score = matchScore(scoringInput, ctx, med);
+
+      return {
+        ...item,
+        medianPrice: med,
+        priceLabel: label,
+        priceDiffPercent: diffPercent,
+        matchScore: score,
+      };
+    });
+  }, [currentPlan.plan, language, partnerContact, partnerListings, query]);
+
+  const filtered = useMemo(() => {
+    const list = marketplaceListings.filter((item) => {
+      const matchesCategory = category === "Semua" || item.type === category;
+      const normalized = query.toLowerCase();
+      if (!normalized) return matchesCategory;
+      return (
+        matchesCategory &&
+        (item.location.toLowerCase().includes(normalized) ||
+          item.title.toLowerCase().includes(normalized) ||
+          (item.matchScore !== undefined && item.matchScore >= 45))
+      );
+    });
+    // Sort by AI match score descending for intelligent relevance ordering
+    return list.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
+  }, [category, marketplaceListings, query]);
 
   // Platinum listings rotate through the hero slider.
   const platinumListings = useMemo(() => marketplaceListings.filter((item) => item.plan === "platinum"), [marketplaceListings]);
@@ -841,6 +892,22 @@ export default function App() {
     setPanel(null);
     document.body.style.overflow = "";
   };
+
+  useEffect(() => {
+    const handleHash = () => {
+      const match = window.location.hash.match(/^#listing-(\d+)$/);
+      if (match) {
+        const id = Number(match[1]);
+        const found = marketplaceListings.find((l) => l.id === id);
+        if (found) {
+          openListing(found);
+        }
+      }
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, [marketplaceListings]);
 
   const openPartner = () => {
     setMobileMenuOpen(false);
@@ -1002,7 +1069,7 @@ export default function App() {
           {partnerRegistered ? (
             <button onClick={openDashboard} className="transition hover:text-[#0064D2]">{text.dashboardNav}</button>
           ) : (
-            <button onClick={openPartner} className="flex items-center gap-1.5 rounded-[10px] bg-[#FFB700] px-3.5 py-2 font-bold text-[#073B6F] shadow-[0_6px_18px_rgba(255,183,0,.45)] ring-2 ring-[#FFB700]/30 transition hover:-translate-y-0.5 hover:bg-[#FFC633] focus-visible:outline-none focus-visible:ring-[#0064D2]">
+            <button onClick={openPartner} className="flex items-center gap-1.5 rounded-[10px] bg-[#FF6A00] px-3.5 py-2 font-bold text-white shadow-[0_6px_18px_rgba(255,106,0,.45)] ring-2 ring-[#FF6A00]/30 transition hover:-translate-y-0.5 hover:bg-[#E85F00] focus-visible:outline-none focus-visible:ring-[#0064D2]">
               <Icon name="sparkles" size={16} /> {text.becomeOwner}
             </button>
           )}
@@ -1074,7 +1141,7 @@ export default function App() {
               {partnerRegistered ? (
                 <button onClick={openDashboard} className="rounded-[14px] px-4 py-3 text-left text-[#073B6F] transition hover:bg-[#F3F7FB]">{text.dashboardNav}</button>
               ) : (
-                <button onClick={() => { setMobileMenuOpen(false); openPartner(); }} className="mt-1 flex items-center gap-2 rounded-[14px] bg-[#FFB700] px-4 py-3 text-left font-bold text-[#073B6F] shadow-[0_6px_18px_rgba(255,183,0,.4)] transition hover:bg-[#FFC633]">
+                <button onClick={() => { setMobileMenuOpen(false); openPartner(); }} className="mt-1 flex items-center gap-2 rounded-[14px] bg-[#FF6A00] px-4 py-3 text-left font-bold text-white shadow-[0_6px_18px_rgba(255,106,0,.4)] transition hover:bg-[#E85F00]">
                   <Icon name="sparkles" size={17} /> {text.becomeOwner}
                 </button>
               )}
@@ -1150,6 +1217,9 @@ export default function App() {
               </Liquid.Item>
               <Liquid.Item observe className="flex items-center gap-2 rounded-full px-3 py-2">
                 <span className="text-[#0877E8]"><Icon name="check" size={17}/></span> {text.noHiddenFees}
+              </Liquid.Item>
+              <Liquid.Item observe className="flex items-center gap-2 rounded-full px-3 py-2 font-semibold text-[#0064D2]">
+                <span className="text-[#0877E8]">✨</span> {language === "en" ? "AI Powered" : "Didukung AI"}
               </Liquid.Item>
             </Liquid>
           </div>
@@ -1227,7 +1297,10 @@ export default function App() {
         <div className="mx-auto max-w-[1240px] px-5 md:px-8">
           <div className="mb-12 flex flex-col items-center gap-7 text-center" data-reveal>
             <div>
-              <p className="mb-4 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">{text.curated}</p>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3.5 py-1 text-xs font-semibold text-[#0064D2] ring-1 ring-blue-500/20">
+                <span className="flex h-2 w-2 rounded-full bg-[#0064D2] animate-pulse" />
+                {language === "en" ? "AI Powered · Match Score & Fair Market Price" : "Didukung AI · Skor Kecocokan & Penilaian Harga Wajar"}
+              </div>
               <h2 className="text-balance text-[34px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827] md:text-5xl">{text.favoritePlaces}</h2>
               <p className="mt-4 text-base text-stone-500 md:text-lg">{filtered.length} {text.propertiesMatch}</p>
             </div>
@@ -1487,6 +1560,38 @@ export default function App() {
                   </div>
                 </div>
 
+                <div className="mt-6 rounded-[18px] border border-stone-200 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-sm font-bold text-[#111827]">{selected.type === "Vila" ? text.nearbyTitleWisata : text.nearbyTitleKuliner}</p>
+                    <AiDatabaseBadge label={text.nearbyBadge} />
+                  </div>
+                  {nearbyLoading ? (
+                    <p className="flex items-center gap-2 text-sm text-stone-400"><span className="h-3 w-3 animate-spin rounded-full border-2 border-stone-300 border-t-[#0064D2]" /> {text.nearbyLoading}</p>
+                  ) : selected.type === "Vila" ? (
+                    <NearbyPlacesGroup
+                      title={text.nearbyTitleWisata}
+                      places={nearbyPlaces.filter((place) => place.category === "wisata")}
+                      language={language}
+                      emptyLabel={text.nearbyEmpty}
+                    />
+                  ) : (
+                    <div className="space-y-5">
+                      <NearbyPlacesGroup
+                        title={text.nearbyTitleKuliner}
+                        places={nearbyPlaces.filter((place) => place.category === "kuliner")}
+                        language={language}
+                        emptyLabel={text.nearbyEmpty}
+                      />
+                      <NearbyPlacesGroup
+                        title={text.nearbyTitleFasilitas}
+                        places={nearbyPlaces.filter((place) => place.category === "fasilitas")}
+                        language={language}
+                        emptyLabel={text.nearbyEmpty}
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {!panel && (
                   <div className="mt-6 space-y-3">
                     <a href={whatsappUrl(selected, language)} target="_blank" rel="noreferrer" className="flex w-full items-center justify-center gap-2 rounded-[15px] bg-[#FFB700] px-5 py-3.5 font-bold text-[#073B6F] transition hover:bg-[#EAA700]"><Icon name="chat" size={19}/> {text.chatOwner}</a>
@@ -1698,7 +1803,13 @@ export default function App() {
         />
       )}
 
-      <ChatWidget language={language} />
+      <ChatWidget
+        language={language}
+        onSelectListing={(id) => {
+          const found = marketplaceListings.find((l) => l.id === id);
+          if (found) openListing(found);
+        }}
+      />
 
       {checkoutPlan && (
         <CheckoutModal plan={checkoutPlan} language={language} onClose={closeCheckout} onPaid={setCurrentPlan} />
