@@ -100,14 +100,17 @@ export function bodyTooLarge(request: Request, maxBytes: number): boolean {
   return !Number.isSafeInteger(contentLength) || contentLength > maxBytes;
 }
 
+/** Sentinel distinguishing "body exceeded the limit" from "body was malformed". */
+export const TOO_LARGE = Symbol("too_large");
+
 /**
  * Reads a request body while enforcing `maxBytes` regardless of what (or
  * whether) `Content-Length` declares — closes the gap where a chunked
  * request with no/understated `Content-Length` would otherwise bypass
  * `bodyTooLarge` and get buffered in full by `formData()`/`json()`.
- * Returns `null` if the real body exceeds the limit.
+ * Returns `TOO_LARGE` if the real body exceeds the limit.
  */
-export async function readBoundedBody(request: Request, maxBytes: number): Promise<ArrayBuffer | null> {
+export async function readBoundedBody(request: Request, maxBytes: number): Promise<ArrayBuffer | typeof TOO_LARGE> {
   const reader = request.body?.getReader();
   if (!reader) return new ArrayBuffer(0);
 
@@ -119,7 +122,7 @@ export async function readBoundedBody(request: Request, maxBytes: number): Promi
     total += value.byteLength;
     if (total > maxBytes) {
       await reader.cancel().catch(() => undefined);
-      return null;
+      return TOO_LARGE;
     }
     chunks.push(value);
   }
@@ -133,10 +136,10 @@ export async function readBoundedBody(request: Request, maxBytes: number): Promi
   return out.buffer;
 }
 
-/** Bounded `request.json()` replacement. Returns `null` on overflow or invalid JSON. */
-export async function boundedJson<T = unknown>(request: Request, maxBytes: number): Promise<T | null> {
+/** Bounded `request.json()` replacement. Returns `TOO_LARGE` on overflow, `null` on invalid JSON. */
+export async function boundedJson<T = unknown>(request: Request, maxBytes: number): Promise<T | null | typeof TOO_LARGE> {
   const buffer = await readBoundedBody(request, maxBytes);
-  if (buffer === null) return null;
+  if (buffer === TOO_LARGE) return TOO_LARGE;
   try {
     return JSON.parse(new TextDecoder().decode(buffer)) as T;
   } catch {
@@ -144,10 +147,10 @@ export async function boundedJson<T = unknown>(request: Request, maxBytes: numbe
   }
 }
 
-/** Bounded `request.formData()` replacement. Returns `null` on overflow or invalid form data. */
-export async function boundedFormData(request: Request, maxBytes: number): Promise<FormData | null> {
+/** Bounded `request.formData()` replacement. Returns `TOO_LARGE` on overflow, `null` on invalid form data. */
+export async function boundedFormData(request: Request, maxBytes: number): Promise<FormData | null | typeof TOO_LARGE> {
   const buffer = await readBoundedBody(request, maxBytes);
-  if (buffer === null) return null;
+  if (buffer === TOO_LARGE) return TOO_LARGE;
   try {
     return await new Response(buffer, { headers: request.headers }).formData();
   } catch {

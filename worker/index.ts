@@ -22,6 +22,7 @@ import {
   honeypotTripped,
   rateLimit,
   sniffImageType,
+  TOO_LARGE,
   verifyTurnstile,
 } from "./lib/security";
 import {
@@ -375,6 +376,7 @@ const partnerSchema = (data: FormData) => {
 app.post("/api/partners/apply", async (c) => {
   if (bodyTooLarge(c.req.raw, 64_000)) return errorResponse(c, 413, { error: "payload_too_large" });
   const formData = await boundedFormData(c.req.raw, 64_000);
+  if (formData === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   if (!formData) return errorResponse(c, 400, { error: "invalid_form" });
 
   if (honeypotTripped(formData)) {
@@ -440,6 +442,7 @@ app.post("/api/listings", async (c) => {
   if (authenticated instanceof Response) return authenticated;
 
   const formData = await boundedFormData(c.req.raw, MAX_LISTING_BODY_BYTES);
+  if (formData === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   if (!formData) return errorResponse(c, 400, { error: "invalid_form" });
 
   if (honeypotTripped(formData)) return c.json({ ok: true }, 202);
@@ -548,6 +551,7 @@ app.post("/api/verifications", async (c) => {
   if (authenticated instanceof Response) return authenticated;
 
   const formData = await boundedFormData(c.req.raw, 6 * 1024 * 1024);
+  if (formData === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   if (!formData) return errorResponse(c, 400, { error: "invalid_form" });
 
   if (honeypotTripped(formData)) return c.json({ ok: true }, 202);
@@ -620,6 +624,7 @@ app.post("/api/ai/rekomendasi", async (c) => {
   if (!limit.allowed) return c.json({ error: "rate_limited", retryAfter: limit.retryAfterSeconds }, 429);
 
   const body = await boundedJson(c.req.raw, 4_000);
+  if (body === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   if (!body || typeof body !== "object") return errorResponse(c, 400, { error: "invalid_json" });
 
   const query = typeof (body as Record<string, unknown>).query === "string" ? (body as Record<string, unknown>).query.slice(0, 300) : "";
@@ -841,6 +846,7 @@ app.post("/api/auth/register", async (c) => {
   if (!limit.allowed) return c.json({ ...TOO_MANY, retryAfter: limit.retryAfterSeconds }, 429);
 
   const body = await boundedJson<Record<string, unknown>>(c.req.raw, MAX_AUTH_BODY);
+  if (body === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   if (!body || typeof body !== "object" || Array.isArray(body)) return errorResponse(c, 400, { error: "invalid_json" });
 
   const turnstile = await verifyTurnstile(c.env, typeof body.cfTurnstileResponse === "string" ? body.cfTurnstileResponse : undefined, clientIp(c.req.raw));
@@ -848,7 +854,7 @@ app.post("/api/auth/register", async (c) => {
 
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
-  const name = String(body.name ?? "").trim();
+  const name = String(body.name ?? "");
   if (!isValidEmail(email) || password.length < 12 || password.length > 200 || (name && !isSafeText(name, 120))) {
     return errorResponse(c, 422, { error: "validation_failed" });
   }
@@ -878,6 +884,7 @@ app.post("/api/auth/login", async (c) => {
   if (!limit.allowed) return c.json({ ...TOO_MANY, retryAfter: limit.retryAfterSeconds }, 429);
 
   const body = await boundedJson<Record<string, unknown>>(c.req.raw, MAX_AUTH_BODY);
+  if (body === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   if (!body || typeof body !== "object" || Array.isArray(body)) return errorResponse(c, 400, { error: "invalid_json" });
 
   const turnstile = await verifyTurnstile(c.env, typeof body.cfTurnstileResponse === "string" ? body.cfTurnstileResponse : undefined, clientIp(c.req.raw));
@@ -927,6 +934,7 @@ app.post("/api/auth/profile", async (c) => {
   if (!limit.allowed) return c.json({ ...TOO_MANY, retryAfter: limit.retryAfterSeconds }, 429);
 
   const body = await boundedJson(c.req.raw, 4_000);
+  if (body === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   if (!isRecord(body)) return errorResponse(c, 400, { error: "invalid_json" });
 
   const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -1008,6 +1016,7 @@ app.post("/api/billing/checkout", async (c) => {
   if (!limit.allowed) return c.json({ ...TOO_MANY, retryAfter: limit.retryAfterSeconds }, 429);
 
   const body = await boundedJson(c.req.raw, 4_000);
+  if (body === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   if (!isRecord(body)) return errorResponse(c, 400, { error: "invalid_json" });
   const plan = body.plan;
   if (typeof plan !== "string" || !(PAID_PLANS as readonly string[]).includes(plan)) {
@@ -1126,7 +1135,8 @@ app.post("/api/webhooks/mayar", async (c) => {
   }
   if (bodyTooLarge(c.req.raw, 64_000)) return errorResponse(c, 413, { error: "payload_too_large" });
 
-  const payload: unknown = await boundedJson(c.req.raw, 64_000);
+  const payload = await boundedJson(c.req.raw, 64_000);
+  if (payload === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   if (!isRecord(payload)) return c.json({ ok: true, ignored: "invalid_json" });
 
   const event = typeof payload.event === "string" ? payload.event.slice(0, 80) : null;
@@ -1190,6 +1200,7 @@ async function handleChat(c: Context<{ Bindings: AppBindings }>) {
   if (!limit.allowed) return c.json({ error: "rate_limited", retryAfter: limit.retryAfterSeconds }, 429);
 
   const body = await boundedJson<Record<string, unknown>>(c.req.raw, 16_000);
+  if (body === TOO_LARGE) return errorResponse(c, 413, { error: "payload_too_large" });
   const raw = body && Array.isArray(body.messages) ? body.messages : null;
   if (!raw || raw.length === 0) return errorResponse(c, 400, { error: "invalid_json" });
 
