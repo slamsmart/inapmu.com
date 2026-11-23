@@ -282,26 +282,28 @@ textarea:focus-visible {
 html.dark {
   color-scheme: dark;
 
-  --brand-blue: #2f7cf0;
-  --brand-ink: #e9eff6;
-  --brand-surface: rgba(111, 176, 255, 0.13);
+  /* Neutral near-black palette (not navy): keeps the blue/amber brand accents
+     reading with clean contrast instead of competing with a blue-tinted bg. */
+  --brand-blue: #3b82f6;
+  --brand-ink: #f2f3f5;
+  --brand-surface: rgba(59, 130, 246, 0.14);
 
-  --dk-bg: #0a1826;
-  --dk-surface: #13293e;
-  --dk-surface-2: #0e2033;
-  --dk-input: #0c1d2f;
-  --dk-elevated: #1d3a55;
-  --dk-border: #26435f;
-  --dk-border-soft: #1e3a52;
+  --dk-bg: #0a0a0a;
+  --dk-surface: #171717;
+  --dk-surface-2: #121212;
+  --dk-input: #141414;
+  --dk-elevated: #262626;
+  --dk-border: #323232;
+  --dk-border-soft: #262626;
 
-  --dk-text: #e9eff6;
-  --dk-text-mid: #aebfcd;
-  --dk-text-mute: #93a8bb;
-  --dk-text-faint: #71879b;
+  --dk-text: #f2f3f5;
+  --dk-text-mid: #c2c4c8;
+  --dk-text-mute: #999b9f;
+  --dk-text-faint: #777a7f;
 
-  --dk-accent-text: #6fb0ff;
-  --dk-accent-soft: rgba(111, 176, 255, 0.13);
-  --dk-amber-soft: rgba(242, 169, 0, 0.15);
+  --dk-accent-text: #5b9dff;
+  --dk-accent-soft: rgba(91, 157, 255, 0.14);
+  --dk-amber-soft: rgba(242, 169, 0, 0.16);
 }
 
 html.dark body {
@@ -385,14 +387,14 @@ html.dark .star-stop-track { stop-color: #29445d; }
 html.dark .star-path-empty { stroke: #3f617f; }
 
 /* --- Scrollbar & selection ------------------------------------------------ */
-html.dark ::-webkit-scrollbar-track { background: #0d1f31; }
+html.dark ::-webkit-scrollbar-track { background: var(--dk-surface-2); }
 html.dark ::-webkit-scrollbar-thumb {
-  border-color: #0d1f31;
-  background: #33506c;
+  border-color: var(--dk-surface-2);
+  background: #3f3f3f;
 }
 html.dark ::selection {
-  background: rgba(111, 176, 255, 0.32);
-  color: #f2f7fc;
+  background: rgba(91, 157, 255, 0.32);
+  color: #f7f8fa;
 }
 
 /* --- Partner dashboard inputs ------------------------------------------- */

@@ -16,7 +16,13 @@ export type NearbyPlace = {
   name: string;
   category: NearbyCategory;
   kind: string;
-  distanceMeters: number;
+  /** Precise distance in meters, available for live geodata lookups (Overpass). */
+  distanceMeters?: number;
+  /** Human-readable distance for curated/researched entries (e.g. "±2 km"). */
+  distanceLabel?: string;
+  /** Attribution for curated entries researched via web search (e.g. "Tripadvisor"). */
+  source?: string;
+  sourceUrl?: string;
 };
 
 const OVERPASS_ENDPOINTS = [
@@ -144,7 +150,7 @@ export async function fetchNearbyPlaces(coordinates: [number, number], listingTy
         });
       }
 
-      return places.sort((a, b) => a.distanceMeters - b.distanceMeters);
+      return places.sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0));
     } catch {
       return [];
     }
@@ -180,6 +186,11 @@ const KIND_LABELS: Record<string, { id: string; en: string }> = {
   fuel: { id: "SPBU", en: "Gas station" },
   supermarket: { id: "Supermarket", en: "Supermarket" },
   convenience: { id: "Minimarket", en: "Convenience store" },
+  rice_terrace: { id: "Sawah berundak", en: "Rice terrace" },
+  monkey_forest: { id: "Hutan monyet", en: "Monkey forest" },
+  ridge_walk: { id: "Jalur trekking", en: "Ridge walk" },
+  waterfall: { id: "Air terjun", en: "Waterfall" },
+  market: { id: "Pasar/bazaar", en: "Market/bazaar" },
 };
 
 export function nearbyKindLabel(kind: string, language: "id" | "en"): string {

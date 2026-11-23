@@ -118,7 +118,7 @@ export default function ChatWidget({
           role="dialog"
           aria-label={t.title}
         >
-          <div className="flex items-center justify-between bg-gradient-to-r from-[#073B6F] to-[#0064D2] px-4 py-3 text-white">
+          <div className="flex items-center justify-between bg-[#0064D2] px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
               <div>

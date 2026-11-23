@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "skills": {
+    "pwa-development": {
+      "source": "alinaqi/maggy",
+      "commit": "55aabe2493627e1de9cd09459d555181d66f3111",
+      "sourceType": "github",
+      "skillPath": "skills/pwa-development/SKILL.md",
+      "computedHash": "dfff1cfb9ced1ba365ac56c65d52eac9aed14783674e76374da3751d6ac8c251"
+    }
+  }
+}

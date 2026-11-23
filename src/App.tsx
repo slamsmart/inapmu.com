@@ -6,12 +6,14 @@ import "leaflet/dist/leaflet.css";
 import PartnerDashboard, { type PartnerListingInput } from "./PartnerDashboard";
 import CheckoutModal from "./CheckoutModal";
 import ChatWidget from "./ChatWidget";
+import InstallPwaButton from "./InstallPwaButton";
 import AccountModal, { UserAvatar } from "./AccountModal";
 import { ApiRequestError, currentSession, displayName, getActivePlan, getCurrentUser, loginUser, logoutUser, registerUser, saveSession, setTurnstileTokenProvider, submitPartnerApplication, type ActivePlan, type PaidPlan, type SessionUser } from "./lib/api";
 import { useTurnstile } from "./lib/turnstile";
 import { CATALOG_LISTINGS } from "./data/catalog";
 import { matchScore, priceLabel, median, medianKey, parseQuery, type PriceLabel, type ListingForScoring } from "./lib/score";
 import { fetchNearbyPlaces, nearbyKindLabel, formatNearbyDistance, type NearbyPlace } from "./lib/nearby";
+import { CURATED_NEARBY_PLACES } from "./data/nearbyPlaces";
 
 
 type IconName =
@@ -156,6 +158,7 @@ const copy = {
     submitPartner: "Kirim pendaftaran",
     partnerSuccess: "Pendaftaran berhasil dikirim",
     partnerSuccessBody: "Tim mitra kami akan menghubungimu melalui WhatsApp maksimal dalam 1×24 jam.",
+    continueToPayment: "Lanjutkan pilih paket",
     backHome: "Kembali ke beranda",
     loginTitle: "Selamat datang kembali",
     loginBody: "Masuk untuk mengelola favorit, chat, dan jadwal surveimu.",
@@ -295,6 +298,7 @@ const copy = {
     submitPartner: "Submit application",
     partnerSuccess: "Application submitted",
     partnerSuccessBody: "Our partnership team will contact you via WhatsApp within 24 hours.",
+    continueToPayment: "Continue choosing a plan",
     backHome: "Back to home",
     loginTitle: "Welcome back",
     loginBody: "Log in to manage favorites, chats, and your scheduled visits.",
@@ -453,7 +457,7 @@ function TrustedBadge({ plan, label, size = "sm" }: { plan?: Plan; label: string
 /** Small logo/badge crediting the geodata source behind the nearby-places feature. */
 function AiDatabaseBadge({ label }: { label: string }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-r from-[#0064D2] to-[#08C0A8] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.04em] text-white shadow-sm">
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#0064D2] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.04em] text-white shadow-sm">
       <Icon name="database" size={11} /> {label}
     </span>
   );
@@ -478,16 +482,31 @@ function NearbyPlacesGroup({ title, places, language, emptyLabel }: { title: str
     <div>
       <p className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-stone-500">{title}</p>
       <ul className="space-y-2">
-        {places.slice(0, 5).map((place, index) => (
-          <li key={`${place.category}-${place.name}-${index}`} className="flex items-center gap-2.5 rounded-[12px] bg-stone-50 px-3 py-2 text-sm">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-[#0064D2] shadow-sm"><Icon name={NEARBY_CATEGORY_ICON[place.category]} size={15} /></span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium text-[#111827]">{place.name}</span>
-              <span className="block text-xs text-stone-500">{nearbyKindLabel(place.kind, language)}</span>
-            </span>
-            <span className="shrink-0 text-xs font-bold text-stone-500">{formatNearbyDistance(place.distanceMeters, language)}</span>
-          </li>
-        ))}
+        {places.slice(0, 6).map((place, index) => {
+          const distance = place.distanceLabel ?? (place.distanceMeters !== undefined ? formatNearbyDistance(place.distanceMeters, language) : null);
+          return (
+            <li key={`${place.category}-${place.name}-${index}`} className="flex items-center gap-2.5 rounded-[12px] bg-stone-50 px-3 py-2 text-sm">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-[#0064D2] shadow-sm"><Icon name={NEARBY_CATEGORY_ICON[place.category]} size={15} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-[#111827]">{place.name}</span>
+                <span className="block text-xs text-stone-500">
+                  {nearbyKindLabel(place.kind, language)}
+                  {place.source && (
+                    <>
+                      {" · "}
+                      {place.sourceUrl ? (
+                        <a href={place.sourceUrl} target="_blank" rel="noreferrer" className="underline decoration-dotted hover:text-[#0064D2]">{place.source}</a>
+                      ) : (
+                        place.source
+                      )}
+                    </>
+                  )}
+                </span>
+              </span>
+              {distance && <span className="shrink-0 text-xs font-bold text-stone-500">{distance}</span>}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -698,6 +717,14 @@ export default function App() {
   useEffect(() => {
     if (!selected) {
       setNearbyPlaces([]);
+      setNearbyLoading(false);
+      return;
+    }
+    // Prefer curated, researched data (via Firecrawl + accurate sources) for the fixed
+    // catalog listings. Fall back to a live OpenStreetMap lookup for other listings.
+    const curated = CURATED_NEARBY_PLACES[selected.id];
+    if (curated) {
+      setNearbyPlaces(curated);
       setNearbyLoading(false);
       return;
     }
@@ -952,18 +979,19 @@ export default function App() {
     document.body.style.overflow = "";
   };
 
-  // Paid plans require an account; remember the plan and resume after login.
+  // Paid plans are for partners only. Check partner status first (registering as a
+  // partner doesn't require an account), then require login before actually paying.
   const startCheckout = (plan: PaidPlan) => {
     setMobileMenuOpen(false);
+    if (!currentPlan.isPartner && !partnerRegistered) {
+      setPendingCheckoutPlan(plan);
+      setPartnerOnlyNotice(true);
+      openPartner();
+      return;
+    }
     if (!authenticatedUser && !currentSession()) {
       setPendingCheckoutPlan(plan);
       openAuth("login");
-      return;
-    }
-    if (!currentPlan.isPartner && !partnerRegistered) {
-      // Paid plans are for partners only: register as a partner first.
-      setPartnerOnlyNotice(true);
-      openPartner();
       return;
     }
     setCheckoutPlan(plan);
@@ -1009,7 +1037,7 @@ export default function App() {
           setAuthOpen(false);
           setAuthResult(null);
           setPendingCheckoutPlan(null);
-          if (plan.isPartner) {
+          if (plan.isPartner || partnerRegistered) {
             setCheckoutPlan(pendingCheckoutPlan);
             document.body.style.overflow = "hidden";
           } else {
@@ -1024,7 +1052,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [authenticatedUser, pendingCheckoutPlan]);
+  }, [authenticatedUser, pendingCheckoutPlan, partnerRegistered]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1675,7 +1703,26 @@ export default function App() {
                     <p className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-[#0064D2]">{text.partnerKicker}</p>
                     <h2 className="max-w-md text-[32px] font-medium leading-[1.1] tracking-[-0.04em] text-[#111827]">{text.partnerSuccess}</h2>
                     <p className="mt-3 max-w-md leading-7 text-stone-500">{text.partnerSuccessBody}</p>
-                    <button onClick={openDashboard} className="mt-8 flex items-center gap-2 rounded-full bg-[#0064D2] px-7 py-3.5 text-sm font-medium text-white transition hover:bg-[#0055B3]">{text.openDashboard}<Icon name="arrow" size={17}/></button>
+                    {pendingCheckoutPlan ? (
+                      <button
+                        onClick={() => {
+                          const plan = pendingCheckoutPlan;
+                          closePartner();
+                          if (!authenticatedUser && !currentSession()) {
+                            openAuth("login");
+                          } else {
+                            setPendingCheckoutPlan(null);
+                            setCheckoutPlan(plan);
+                            document.body.style.overflow = "hidden";
+                          }
+                        }}
+                        className="mt-8 flex items-center gap-2 rounded-full bg-[#0064D2] px-7 py-3.5 text-sm font-medium text-white transition hover:bg-[#0055B3]"
+                      >
+                        {text.continueToPayment}<Icon name="arrow" size={17}/>
+                      </button>
+                    ) : (
+                      <button onClick={openDashboard} className="mt-8 flex items-center gap-2 rounded-full bg-[#0064D2] px-7 py-3.5 text-sm font-medium text-white transition hover:bg-[#0055B3]">{text.openDashboard}<Icon name="arrow" size={17}/></button>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -1802,6 +1849,8 @@ export default function App() {
           }}
         />
       )}
+
+      <InstallPwaButton language={language} />
 
       <ChatWidget
         language={language}

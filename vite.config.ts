@@ -1,6 +1,7 @@
 import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 
 import siteConfiguration from './.figma/make/site.json'
@@ -24,6 +25,47 @@ react(),
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      VitePWA({
+        registerType: 'autoUpdate',
+        includeAssets: ['favicon.svg', 'pwa-icon.svg', 'pwa-icon-maskable.svg'],
+        manifest: {
+          id: '/',
+          name: 'inapmu.com — Kos, Kontrakan & Vila',
+          short_name: 'inapmu.com',
+          description: 'Temukan kos, kontrakan, dan vila terverifikasi. Chat pemilik langsung, tanpa perantara.',
+          start_url: '/',
+          scope: '/',
+          display: 'standalone',
+          background_color: '#ffffff',
+          // Matches the brand blue used across buttons, links, and the chat widget header.
+          theme_color: '#0064D2',
+          lang: 'id',
+          icons: [
+            { src: '/pwa-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+            { src: '/pwa-icon-maskable.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
+          ],
+        },
+        workbox: {
+          // Never cache API responses or auth/billing routes — those must always hit the network.
+          navigateFallbackDenylist: [/^\/api\//, /^\/media\//],
+          globPatterns: ['**/*.{js,css,html,svg}'],
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/images\.unsplash\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'listing-images',
+                expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 14 },
+              },
+            },
+            {
+              urlPattern: /\/media\/.*/i,
+              handler: 'StaleWhileRevalidate',
+              options: { cacheName: 'inapmu-media' },
+            },
+          ],
+        },
+      }),
     ],
     resolve: {
       alias: {
